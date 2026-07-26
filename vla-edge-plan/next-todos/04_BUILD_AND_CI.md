@@ -1,6 +1,6 @@
 # 04 — Build and CI
 
-> Priority: P1 (should fix for production quality)
+> Priority: P0 (critical for portfolio proof - plugin architecture must be verifiable from clean install)
 > Estimated effort: 3-5 hours
 
 ## 4.1 Fix `pyproject.toml` build-backend

@@ -17,6 +17,7 @@
 **Acceptance criteria:**
 - `static_int8_quantize` runs for the specified number of calibration steps
 - Returns a quantized model (not falling back to dynamic)
+- Function doesn't silently fall back to dynamic quantization
 - Unit test passes with mock calibration data
 
 ## 1.2 Fix `benchmark.py` CLI entry point
@@ -60,3 +61,29 @@
 **Acceptance criteria:**
 - Users get a clear error message or the CLI actually works
 - No dead entry points in `pyproject.toml`
+
+## 1.5 Fix `report.py` numpy import guard
+
+**Problem:** `report.py` imports `numpy as np` at module level without an explicit guard. While numpy is a transitive dependency, this should be handled gracefully.
+
+**Subtasks:**
+- [ ] Add try/except import guard for numpy
+- [ ] Provide helpful error message if numpy not installed
+- [ ] Guard matplotlib import (already done, verify)
+
+**Acceptance criteria:**
+- `import lerobot_edge.report` works even without numpy installed
+- Clear error message if numpy missing
+
+## 1.6 Clean up dead CLI entry points in `pyproject.toml`
+
+**Problem:** `lerobot-edge-distill` is listed in `[project.scripts]` but raises NotImplementedError.
+
+**Subtasks:**
+- [ ] Remove `lerobot-edge-distill` from `[project.scripts]` until implemented
+- [ ] Verify all remaining entry points work
+- [ ] Add comments for future entry points
+
+**Acceptance criteria:**
+- No dead entry points in `pyproject.toml`
+- All listed entry points produce valid output or clear errors
