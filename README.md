@@ -98,16 +98,18 @@ SmolVLA (864 MB, ~450M params) — measured on NVIDIA RTX 5060 and Intel CPU. Al
 | FP32 + torch.compile | 1.87 ms | 534.8 | -- | -- | GPU +27% |
 | INT8 + torch.compile | 2.50 ms | 399.5 | -- | -- | GPU +70% |
 
+*batch_size=1, single-sample inference*
+
 ### Memory Footprint
 
 | Format | Model Size | Compression |
 |--------|-----------|-------------|
 | FP32 (original) | 864 MB | -- |
 | Dynamic INT8 | 864 MB | Weights FP32, activations quantized at runtime |
-| Static INT8 | ~216 MB | 4x * |
-| 4-bit NF4 | ~108 MB | 8x * |
+| Static INT8 | ~216 MB | 4x † |
+| 4-bit NF4 | ~108 MB | 8x † |
 
-\* Estimated based on theoretical compression ratios. Not yet benchmarked on this model.
+† Estimated based on theoretical compression ratios. Not yet benchmarked on this model.
 
 ### Quality Gate
 
