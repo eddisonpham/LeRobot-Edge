@@ -237,50 +237,41 @@ def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
             "bitsandbytes is required for 4-bit quantization. Install with: pip install lerobot-edge[quantize]"
         )
 
-    logger.info("Applying %s 4-bit quantization via bitsandbytes...", quant_type.upper())
+    from bitsandbytes import functional as bnb_func
+    from bitsandbytes.nn import Params4bit
+    from bitsandbytes.nn.modules import Linear4bit
 
-    try:
-        from bitsandbytes.nn.modules import Linear4bit
-    except ImportError as e:
-        raise ImportError(
-            "bitsandbytes version too old: Linear4bit not found. Upgrade with: pip install --upgrade bitsandbytes"
-        ) from e
-
-    try:
-        linear_layers = [
-            (name, module)
-            for name, module in model.named_modules()
-            if isinstance(module, nn.Linear)
-        ]
-        if not linear_layers:
-            logger.warning("No nn.Linear modules found to quantize.")
-            return model
-
-        modules_dict = dict(model.named_modules())
-        for name, module in linear_layers:
-            parent_name, _, child_name = name.rpartition(".")
-            parent = model if not parent_name else modules_dict[parent_name]
-            new_layer = Linear4bit(
-                module.in_features,
-                module.out_features,
-                bias=module.bias is not None,
-                compute_dtype=module.weight.dtype,
-                compress_statistics=True,
-                quant_type=quant_type,
-            )
-            new_layer.weight = nn.Parameter(module.weight, requires_grad=False)
-            if module.bias is not None:
-                new_layer.bias = nn.Parameter(module.bias, requires_grad=False)
-            setattr(parent, child_name, new_layer)
-            logger.debug("Replaced layer %s with Linear4bit", name)
-
-        logger.info("4-bit quantization applied to %d Linear layers.", len(linear_layers))
+    linear_layers = [
+        (name, module)
+        for name, module in model.named_modules()
+        if isinstance(module, nn.Linear)
+    ]
+    if not linear_layers:
+        logger.warning("No nn.Linear modules found to quantize.")
         return model
-    except ImportError:
-        raise
-    except Exception as e:
-        logger.warning("4-bit quantization failed: %s. Returning original.", e)
-        return model
+
+    modules_dict = dict(model.named_modules())
+    for name, module in linear_layers:
+        parent_name, _, child_name = name.rpartition(".")
+        parent = model if not parent_name else modules_dict[parent_name]
+        new_layer = Linear4bit(
+            module.in_features,
+            module.out_features,
+            bias=module.bias is not None,
+            compute_dtype=module.weight.dtype,
+            compress_statistics=True,
+            quant_type=quant_type,
+        )
+        w4, state = bnb_func.quantize_4bit(module.weight.data, quant_type=quant_type)
+        new_layer.weight = Params4bit(
+            w4, requires_grad=False, quant_type=quant_type, quant_state=state
+        )
+        if module.bias is not None:
+            new_layer.bias = nn.Parameter(module.bias, requires_grad=False)
+        setattr(parent, child_name, new_layer)
+
+    logger.info("4-bit quantization applied to %d Linear layers.", len(linear_layers))
+    return model
 
 
 def quantize_bnb_int8(model: nn.Module) -> nn.Module:
@@ -289,15 +280,12 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
             "bitsandbytes is required for INT8 quantization. Install with: pip install lerobot-edge[quantize]"
         )
 
-    try:
-        from bitsandbytes.nn import Linear8bitLt
-    except ImportError as e:
-        raise ImportError(
-            "bitsandbytes version too old: Linear8bitLt not found. Upgrade with: pip install --upgrade bitsandbytes"
-        ) from e
+    from bitsandbytes.nn import Int8Params, Linear8bitLt
 
     linear_layers = [
-        (name, module) for name, module in model.named_modules() if isinstance(module, nn.Linear)
+        (name, module)
+        for name, module in model.named_modules()
+        if isinstance(module, nn.Linear)
     ]
     if not linear_layers:
         logger.warning("No nn.Linear modules found to quantize.")
@@ -311,12 +299,14 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
             module.in_features,
             module.out_features,
             bias=module.bias is not None,
-            has_fp16_weights=True,
+            has_fp16_weights=False,
             threshold=6.0,
         )
-        new_layer.weight = nn.Parameter(module.weight.float(), requires_grad=False)
+        new_layer.weight = Int8Params(
+            module.weight.data.half(), requires_grad=False
+        )
         if module.bias is not None:
-            new_layer.bias = nn.Parameter(module.bias.float(), requires_grad=False)
+            new_layer.bias = nn.Parameter(module.bias.half(), requires_grad=False)
         setattr(parent, child_name, new_layer)
 
     logger.info("bitsandbytes INT8 quantization applied to %d Linear layers.", len(linear_layers))
