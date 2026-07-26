@@ -33,6 +33,7 @@ class TestTorchaoCodePaths:
     def test_has_torchao_flag_matches_installation(self):
         try:
             from torchao.quantization import quantize_  # noqa: F401
+
             assert HAS_TORCHAO is True
         except ImportError:
             assert HAS_TORCHAO is False
@@ -78,7 +79,7 @@ class TestTorchaoCodePaths:
             QuantizedLinear,
             StaticQuantConfig,
         )
+
         assert ObservedLinear is not None
         assert QuantizedLinear is not None
         assert StaticQuantConfig is not None
-

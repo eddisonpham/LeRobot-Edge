@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-from dataclasses import fields
-
 from lerobot_edge.core.configs import (
     EdgeBaseConfig,
-    EdgeIdentityConfig,
-    EdgeQuantInt8Config,
-    EdgeOnnxFp32Config,
-    EdgeOnnxInt8Config,
     EdgeDistilledConfig,
     EdgeDistilledOnnxInt8Config,
+    EdgeIdentityConfig,
+    EdgeOnnxFp32Config,
+    EdgeOnnxInt8Config,
+    EdgeQuantInt8Config,
 )
 
 
@@ -90,7 +87,6 @@ class TestConfigRegistration:
 
     def test_config_type_property(self):
         """Config.type property should return the registered name."""
-        from lerobot.configs import PreTrainedConfig
 
         for cfg_cls, expected_type in [
             (EdgeIdentityConfig, "edge_identity"),

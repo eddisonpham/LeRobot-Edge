@@ -8,12 +8,11 @@ import torch.nn as nn
 
 from lerobot_edge.compression.quantize import (
     HAS_TORCHAO,
-    dynamic_int8_quantize,
     QuantizedBackend,
+    dynamic_int8_quantize,
 )
-from lerobot_edge.core.utils import measure_model_memory
 from lerobot_edge.core.configs import EdgeQuantInt8Config
-
+from lerobot_edge.core.utils import measure_model_memory
 
 # ---------------------------------------------------------------------------
 # Test fixtures
@@ -85,10 +84,8 @@ class TestDynamicInt8Quantization:
         """Quantized model should have quantized weights."""
         quantized = dynamic_int8_quantize(simple_model)
         # Check that some parameters are quantized
-        has_quantized = False
         for param in quantized.parameters():
-            if hasattr(param, 'dtype') and param.dtype in (torch.qint8, torch.quint8):
-                has_quantized = True
+            if hasattr(param, "dtype") and param.dtype in (torch.qint8, torch.quint8):
                 break
         # Note: dynamic quantization may not always produce qint8 params
         # depending on the model structure, so we just check the model runs

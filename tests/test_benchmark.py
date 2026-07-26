@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -10,20 +9,18 @@ import pytest
 import torch
 import torch.nn as nn
 
+from lerobot_edge.core.base import NativePyTorchBackend, _PlaceholderBackend
+from lerobot_edge.core.utils import (
+    get_git_commit_hash,
+    measure_model_memory,
+    measure_peak_memory_mb,
+)
 from lerobot_edge.evaluation.benchmark import (
     BenchmarkResult,
     benchmark_backend,
     compare_results,
     load_results,
 )
-from lerobot_edge.core.utils import (
-    get_git_commit_hash,
-    measure_model_memory,
-    measure_peak_memory_mb,
-)
-from lerobot_edge.core.base import NativePyTorchBackend, _PlaceholderBackend
-from lerobot_edge.core.configs import EdgeIdentityConfig
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures
@@ -267,6 +264,7 @@ class TestResultIO:
 
             # Save
             from lerobot_edge.evaluation.benchmark import _save_results_json
+
             _save_results_json(results, path)
             assert path.exists()
 

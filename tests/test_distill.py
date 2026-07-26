@@ -5,11 +5,9 @@ from __future__ import annotations
 import pytest
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 
-from lerobot_edge.compression.distill import DistillationLoss, DistilledBackend, distill
+from lerobot_edge.compression.distill import DistillationLoss, DistilledBackend
 from lerobot_edge.core.configs import EdgeDistilledConfig
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures
@@ -79,7 +77,8 @@ class TestDistillationLoss:
         teacher_logits = torch.randn(4, 10)
 
         loss = criterion(
-            student_actions, teacher_actions,
+            student_actions,
+            teacher_actions,
             student_logits=student_logits,
             teacher_logits=teacher_logits,
         )
@@ -95,7 +94,8 @@ class TestDistillationLoss:
         teacher_logits = torch.randn(4, 10)
 
         loss = criterion(
-            student_actions, teacher_actions,
+            student_actions,
+            teacher_actions,
             student_logits=student_logits,
             teacher_logits=teacher_logits,
         )

@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from lerobot_edge.tracking.tracker import ExperimentTracker, TrackConfig
 
@@ -76,13 +73,15 @@ class TestExperimentTrackerLocal:
         config = TrackConfig(log_dir=str(tmp_path))
         tracker = ExperimentTracker(config=config, enabled=False)
         tracker.init_run()
-        tracker.log_benchmark_result({
-            "backend_name": "quant_int8",
-            "latency_mean_ms": 15.2,
-            "throughput_fps": 65.8,
-            "peak_memory_mb": 256.0,
-            "success_rate": 0.85,
-        })
+        tracker.log_benchmark_result(
+            {
+                "backend_name": "quant_int8",
+                "latency_mean_ms": 15.2,
+                "throughput_fps": 65.8,
+                "peak_memory_mb": 256.0,
+                "success_rate": 0.85,
+            }
+        )
         tracker.finish_run()
 
         log_files = list(tmp_path.glob("run_*.json"))
@@ -98,12 +97,14 @@ class TestExperimentTrackerLocal:
         config = TrackConfig(log_dir=str(tmp_path))
         tracker = ExperimentTracker(config=config, enabled=False)
         tracker.init_run()
-        tracker.log_quality_report({
-            "variant": "int8",
-            "compression_ratio": 2.1,
-            "memory_savings_pct": 52.3,
-            "cosine_similarity": 0.998,
-        })
+        tracker.log_quality_report(
+            {
+                "variant": "int8",
+                "compression_ratio": 2.1,
+                "memory_savings_pct": 52.3,
+                "cosine_similarity": 0.998,
+            }
+        )
         tracker.finish_run()
 
         log_files = list(tmp_path.glob("run_*.json"))
@@ -117,10 +118,12 @@ class TestExperimentTrackerLocal:
         config = TrackConfig(log_dir=str(tmp_path))
         tracker = ExperimentTracker(config=config, enabled=False)
         tracker.init_run()
-        tracker.log_comparison_table([
-            {"variant": "fp32", "compression_ratio": 1.0},
-            {"variant": "int8", "compression_ratio": 2.0},
-        ])
+        tracker.log_comparison_table(
+            [
+                {"variant": "fp32", "compression_ratio": 1.0},
+                {"variant": "int8", "compression_ratio": 2.0},
+            ]
+        )
         tracker.finish_run()
 
         log_files = list(tmp_path.glob("run_*.json"))
@@ -147,6 +150,7 @@ class TestExperimentTrackerWandb:
 
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             import lerobot_edge.tracking.tracker as mon_mod
+
             old_has_wandb = mon_mod.HAS_WANDB
             old_wandb_ref = getattr(mon_mod, "wandb", None)
             mon_mod.HAS_WANDB = True
@@ -176,6 +180,7 @@ class TestExperimentTrackerWandb:
 
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             import lerobot_edge.tracking.tracker as mon_mod
+
             old_has_wandb = mon_mod.HAS_WANDB
             old_wandb_ref = getattr(mon_mod, "wandb", None)
             mon_mod.HAS_WANDB = True
@@ -200,6 +205,7 @@ class TestExperimentTrackerWandb:
 
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             import lerobot_edge.tracking.tracker as mon_mod
+
             old_has_wandb = mon_mod.HAS_WANDB
             old_wandb_ref = getattr(mon_mod, "wandb", None)
             mon_mod.HAS_WANDB = True
@@ -224,6 +230,7 @@ class TestExperimentTrackerWandb:
 
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             import lerobot_edge.tracking.tracker as mon_mod
+
             old_has_wandb = mon_mod.HAS_WANDB
             old_wandb_ref = getattr(mon_mod, "wandb", None)
             mon_mod.HAS_WANDB = True

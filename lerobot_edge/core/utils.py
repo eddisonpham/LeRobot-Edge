@@ -100,7 +100,9 @@ def build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torc
     policy_name = type(policy).__name__
     if policy_name == "SmolVLAPolicy" and "observation.language.tokens" not in dummy_input:
         dummy_input["observation.language.tokens"] = torch.randint(0, 32000, (1, 16), device=device)
-        dummy_input["observation.language.attention_mask"] = torch.ones(1, 16, dtype=torch.bool, device=device)
+        dummy_input["observation.language.attention_mask"] = torch.ones(
+            1, 16, dtype=torch.bool, device=device
+        )
 
     return dummy_input
 

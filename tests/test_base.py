@@ -13,8 +13,7 @@ from lerobot_edge.core.base import (
     NativePyTorchBackend,
     _PlaceholderBackend,
 )
-from lerobot_edge.core.configs import EdgeBaseConfig, EdgeIdentityConfig
-
+from lerobot_edge.core.configs import EdgeIdentityConfig
 
 # ---------------------------------------------------------------------------
 # Test fixtures
@@ -108,9 +107,7 @@ class TestDeploymentBackendInterface:
 class TestCompressedPolicy:
     """Test CompressedPolicy wrapper functionality."""
 
-    def test_compressed_policy_creation_with_backend(
-        self, simple_policy, identity_config
-    ):
+    def test_compressed_policy_creation_with_backend(self, simple_policy, identity_config):
         """CompressedPolicy should be creatable with a pre-built backend."""
         backend = NativePyTorchBackend(simple_policy)
         policy = CompressedPolicy(config=identity_config, backend=backend)
@@ -118,9 +115,7 @@ class TestCompressedPolicy:
         assert policy is not None
         assert policy.device == torch.device("cpu")
 
-    def test_compressed_policy_select_action(
-        self, simple_policy, identity_config, dummy_batch
-    ):
+    def test_compressed_policy_select_action(self, simple_policy, identity_config, dummy_batch):
         """select_action should return a tensor."""
         backend = NativePyTorchBackend(simple_policy)
         policy = CompressedPolicy(config=identity_config, backend=backend)
@@ -130,15 +125,13 @@ class TestCompressedPolicy:
         # Shape depends on the backend - single action may or may not have batch dim
         assert action.numel() > 0
 
-    def test_compressed_policy_action_caching(
-        self, simple_policy, identity_config, dummy_batch
-    ):
+    def test_compressed_policy_action_caching(self, simple_policy, identity_config, dummy_batch):
         """select_action should cache action chunks."""
         backend = NativePyTorchBackend(simple_policy)
         policy = CompressedPolicy(config=identity_config, backend=backend)
 
         # First call triggers inference
-        action1 = policy.select_action(dummy_batch)
+        policy.select_action(dummy_batch)
         assert policy._action_cache is not None
         assert policy._cache_idx == 1
 
@@ -148,9 +141,7 @@ class TestCompressedPolicy:
         action2 = policy.select_action(dummy_batch)
         assert isinstance(action2, torch.Tensor)
 
-    def test_compressed_policy_reset(
-        self, simple_policy, identity_config, dummy_batch
-    ):
+    def test_compressed_policy_reset(self, simple_policy, identity_config, dummy_batch):
         """reset should clear action cache."""
         backend = NativePyTorchBackend(simple_policy)
         policy = CompressedPolicy(config=identity_config, backend=backend)
@@ -164,9 +155,7 @@ class TestCompressedPolicy:
         assert policy._action_cache is None
         assert policy._cache_idx == 0
 
-    def test_compressed_policy_forward(
-        self, simple_policy, identity_config, dummy_batch
-    ):
+    def test_compressed_policy_forward(self, simple_policy, identity_config, dummy_batch):
         """forward should return loss and info dict."""
         backend = NativePyTorchBackend(simple_policy)
         policy = CompressedPolicy(config=identity_config, backend=backend)
@@ -184,9 +173,7 @@ class TestCompressedPolicy:
         action = policy.select_action(batch)
         assert isinstance(action, torch.Tensor)
 
-    def test_compressed_policy_get_optim_params(
-        self, simple_policy, identity_config
-    ):
+    def test_compressed_policy_get_optim_params(self, simple_policy, identity_config):
         """get_optim_params should return parameters dict."""
         backend = NativePyTorchBackend(simple_policy)
         policy = CompressedPolicy(config=identity_config, backend=backend)

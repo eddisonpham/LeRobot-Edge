@@ -14,6 +14,11 @@ import pytest
 import torch
 import torch.nn as nn
 
+from lerobot_edge.compression.quantize import (
+    HAS_TORCHAO,
+    QuantizedBackend,
+    dynamic_int8_quantize,
+)
 from lerobot_edge.core.base import (
     CompressedPolicy,
     DeploymentBackend,
@@ -24,8 +29,8 @@ from lerobot_edge.core.configs import (
     EdgeBaseConfig,
     EdgeDistilledConfig,
     EdgeIdentityConfig,
-    EdgeOnnxInt8Config,
     EdgeOnnxFp32Config,
+    EdgeOnnxInt8Config,
     EdgeQuantInt8Config,
 )
 from lerobot_edge.core.utils import (
@@ -35,11 +40,7 @@ from lerobot_edge.core.utils import (
     measure_peak_memory_mb,
     sigmoid_scalar,
 )
-from lerobot_edge.compression.quantize import (
-    HAS_TORCHAO,
-    dynamic_int8_quantize,
-    QuantizedBackend,
-)
+from lerobot_edge.evaluation.gate import QualityGate, QualityGateResult
 from lerobot_edge.evaluation.metrics import (
     OutputDivergence,
     QuantizationQualityReport,
@@ -47,12 +48,11 @@ from lerobot_edge.evaluation.metrics import (
     compare_backends,
     measure_output_divergence,
 )
-from lerobot_edge.evaluation.gate import QualityGate, QualityGateResult
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures
 # ---------------------------------------------------------------------------
+
 
 class MinimalPolicy(nn.Module):
     """Minimal policy satisfying LeRobot's interface for testing."""
@@ -95,6 +95,7 @@ def config() -> EdgeIdentityConfig:
 # ---------------------------------------------------------------------------
 # Public API: core.base
 # ---------------------------------------------------------------------------
+
 
 class TestCoreBaseAPI:
     """Verify DeploymentBackend, IdentityBackend, NativePyTorchBackend, CompressedPolicy."""
@@ -150,6 +151,7 @@ class TestCoreBaseAPI:
 # Public API: core.configs
 # ---------------------------------------------------------------------------
 
+
 class TestCoreConfigsAPI:
     """Verify all config types are registered and instantiable."""
 
@@ -176,6 +178,7 @@ class TestCoreConfigsAPI:
 # ---------------------------------------------------------------------------
 # Public API: core.utils
 # ---------------------------------------------------------------------------
+
 
 class TestCoreUtilsAPI:
     """Verify utility functions work correctly."""
@@ -208,6 +211,7 @@ class TestCoreUtilsAPI:
 # Public API: compression.quantize
 # ---------------------------------------------------------------------------
 
+
 class TestCompressionQuantizeAPI:
     """Verify quantization functions and QuantizedBackend."""
 
@@ -230,6 +234,7 @@ class TestCompressionQuantizeAPI:
 # ---------------------------------------------------------------------------
 # Public API: evaluation.metrics
 # ---------------------------------------------------------------------------
+
 
 class TestEvaluationMetricsAPI:
     """Verify metrics functions and dataclasses."""
@@ -264,6 +269,7 @@ class TestEvaluationMetricsAPI:
 # Public API: evaluation.gate
 # ---------------------------------------------------------------------------
 
+
 class TestEvaluationGateAPI:
     """Verify QualityGate passes/fails correctly."""
 
@@ -291,6 +297,7 @@ class TestEvaluationGateAPI:
 # Public API: tracking
 # ---------------------------------------------------------------------------
 
+
 class TestTrackingAPI:
     """Verify ExperimentTracker works in local mode."""
 
@@ -310,18 +317,16 @@ class TestTrackingAPI:
 # End-to-end: quantize → benchmark → gate
 # ---------------------------------------------------------------------------
 
+
 class TestEndToEndPipeline:
     """Verify the full quantize → benchmark → quality gate pipeline."""
 
     def test_full_pipeline(self, policy, batch):
-        original_mem = measure_model_memory(policy)
+        measure_model_memory(policy)
 
-        if HAS_TORCHAO:
-            quantized = dynamic_int8_quantize(policy)
-        else:
-            quantized = policy
+        quantized = dynamic_int8_quantize(policy) if HAS_TORCHAO else policy
 
-        quantized_mem = measure_model_memory(quantized)
+        measure_model_memory(quantized)
 
         gate = QualityGate(min_cosine_similarity=0.95)
         gate_result = gate.check(policy, quantized, batch)

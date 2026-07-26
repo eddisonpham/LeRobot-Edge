@@ -14,11 +14,13 @@ Run with:
 
 from __future__ import annotations
 
-import gc
 import pytest
 import torch
-import torch.nn as nn
 
+from lerobot_edge.compression.quantize import (
+    QuantizedBackend,
+    dynamic_int8_quantize,
+)
 from lerobot_edge.core.base import (
     CompressedPolicy,
     IdentityBackend,
@@ -27,12 +29,6 @@ from lerobot_edge.core.base import (
 from lerobot_edge.core.configs import (
     EdgeIdentityConfig,
     EdgeQuantInt8Config,
-    EdgeOnnxFp32Config,
-    EdgeOnnxInt8Config,
-)
-from lerobot_edge.compression.quantize import (
-    dynamic_int8_quantize,
-    QuantizedBackend,
 )
 from lerobot_edge.core.utils import measure_model_memory
 
@@ -50,6 +46,7 @@ pytestmark = [
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def smolvla_policy():
     """Load real SmolVLA policy from HuggingFace Hub.
@@ -58,8 +55,8 @@ def smolvla_policy():
     module, not once per test function (downloading ~450M params is slow).
     """
     try:
-        from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
         from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
+        from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
     except ImportError:
         pytest.skip("LeRobot SmolVLA not available")
 
@@ -200,7 +197,9 @@ class TestSmolVLAQuantization:
         assert reduction_pct >= 0, f"Memory increased after quantization: {reduction_pct:.1f}%"
 
         # Log for visibility
-        print(f"\nMemory: {original['total_mb']:.1f} MB -> {quantized_mem['total_mb']:.1f} MB ({reduction_pct:.1f}% reduction)")
+        print(
+            f"\nMemory: {original['total_mb']:.1f} MB -> {quantized_mem['total_mb']:.1f} MB ({reduction_pct:.1f}% reduction)"
+        )
 
 
 class TestSmolVLAPluginRegistration:
@@ -230,6 +229,7 @@ class TestSmolVLAPluginRegistration:
     def test_config_class_retrievable(self):
         """Config classes should be retrievable from registry."""
         from lerobot.configs import PreTrainedConfig
+
         from lerobot_edge.core.configs import EdgeIdentityConfig, EdgeQuantInt8Config
 
         cls = PreTrainedConfig.get_choice_class("edge_identity")

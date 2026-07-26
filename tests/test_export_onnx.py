@@ -11,7 +11,6 @@ import torch.nn as nn
 
 from lerobot_edge.core.configs import EdgeOnnxFp32Config
 
-
 # ---------------------------------------------------------------------------
 # Helper functions (MUST be before test classes for pytest.mark.skipif)
 # ---------------------------------------------------------------------------
@@ -19,7 +18,8 @@ from lerobot_edge.core.configs import EdgeOnnxFp32Config
 
 def _has_onnx() -> bool:
     try:
-        import onnx
+        import onnx  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -27,7 +27,8 @@ def _has_onnx() -> bool:
 
 def _has_ort() -> bool:
     try:
-        import onnxruntime
+        import onnxruntime  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -77,9 +78,7 @@ def onnx_config() -> EdgeOnnxFp32Config:
 class TestOnnxExport:
     """Test ONNX export functionality."""
 
-    @pytest.mark.skipif(
-        not _has_onnx(), reason="onnx package not installed"
-    )
+    @pytest.mark.skipif(not _has_onnx(), reason="onnx package not installed")
     def test_export_creates_file(self, simple_policy, onnx_config):
         """ONNX export should create a file."""
         from lerobot_edge.export.onnx import export_policy_to_onnx
@@ -96,9 +95,7 @@ class TestOnnxExport:
             assert result.exists()
             assert result.stat().st_size > 0
 
-    @pytest.mark.skipif(
-        not _has_onnx(), reason="onnx package not installed"
-    )
+    @pytest.mark.skipif(not _has_onnx(), reason="onnx package not installed")
     def test_export_validates_model(self, simple_policy, onnx_config):
         """Exported ONNX model should pass validation."""
         from lerobot_edge.export.onnx import export_policy_to_onnx, validate_onnx_model
@@ -122,12 +119,10 @@ class TestOnnxExport:
 class TestOnnxRuntimeBackend:
     """Test ONNX Runtime backend."""
 
-    @pytest.mark.skipif(
-        not _has_ort(), reason="onnxruntime package not installed"
-    )
+    @pytest.mark.skipif(not _has_ort(), reason="onnxruntime package not installed")
     def test_backend_predict(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend should produce valid predictions."""
-        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend
+        from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.onnx"
@@ -146,12 +141,10 @@ class TestOnnxRuntimeBackend:
             assert isinstance(result, torch.Tensor)
             assert result.shape == (1, 2)
 
-    @pytest.mark.skipif(
-        not _has_ort(), reason="onnxruntime package not installed"
-    )
+    @pytest.mark.skipif(not _has_ort(), reason="onnxruntime package not installed")
     def test_backend_reset(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend reset should not raise."""
-        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend
+        from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.onnx"
@@ -166,12 +159,10 @@ class TestOnnxRuntimeBackend:
             backend = OnnxRuntimeBackend(output_path)
             backend.reset()  # Should not raise
 
-    @pytest.mark.skipif(
-        not _has_ort(), reason="onnxruntime package not installed"
-    )
+    @pytest.mark.skipif(not _has_ort(), reason="onnxruntime package not installed")
     def test_backend_properties(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend should report correct properties."""
-        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend
+        from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.onnx"

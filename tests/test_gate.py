@@ -90,6 +90,7 @@ class TestQualityGate:
 
     def test_gate_with_backend_predict(self, simple_policy, dummy_batch):
         from lerobot_edge.core.base import NativePyTorchBackend
+
         backend = NativePyTorchBackend(simple_policy)
         gate = QualityGate(min_cosine_similarity=0.999, num_samples=5)
         result = gate.check(backend._policy, backend._policy, dummy_batch)

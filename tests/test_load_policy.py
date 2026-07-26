@@ -52,10 +52,18 @@ class TestLoadPolicyFromCheckpoint:
         mock_factory_config = MagicMock(return_value=mock_config)
         mock_factory_make = MagicMock(return_value=mock_model)
 
-        with patch.dict("sys.modules", {"lerobot.policies.factory": MagicMock(make_policy_config=mock_factory_config, make_policy=mock_factory_make)}):
-            with patch("lerobot_edge.core.utils.importlib.import_module", side_effect=mock_import_mod):
-                result = load_policy_from_checkpoint("some/path", "smolvla", "cpu")
-                assert result is mock_model
+        with patch.dict(
+            "sys.modules",
+            {
+                "lerobot.policies.factory": MagicMock(
+                    make_policy_config=mock_factory_config, make_policy=mock_factory_make
+                )
+            },
+        ), patch(
+            "lerobot_edge.core.utils.importlib.import_module", side_effect=mock_import_mod
+        ):
+            result = load_policy_from_checkpoint("some/path", "smolvla", "cpu")
+            assert result is mock_model
 
     def test_from_pretrained_raises_falls_back_to_factory(self):
         mock_config = MagicMock()
@@ -66,10 +74,19 @@ class TestLoadPolicyFromCheckpoint:
         mock_factory_config = MagicMock(return_value=mock_config)
         mock_factory_make = MagicMock(return_value=mock_model)
 
-        with patch.dict("sys.modules", {"lerobot.policies.factory": MagicMock(make_policy_config=mock_factory_config, make_policy=mock_factory_make)}):
-            with patch("lerobot_edge.core.utils.importlib.import_module", side_effect=RuntimeError("Connection error")):
-                result = load_policy_from_checkpoint("some/path", "smolvla", "cpu")
-                assert result is mock_model
+        with patch.dict(
+            "sys.modules",
+            {
+                "lerobot.policies.factory": MagicMock(
+                    make_policy_config=mock_factory_config, make_policy=mock_factory_make
+                )
+            },
+        ), patch(
+            "lerobot_edge.core.utils.importlib.import_module",
+            side_effect=RuntimeError("Connection error"),
+        ):
+            result = load_policy_from_checkpoint("some/path", "smolvla", "cpu")
+            assert result is mock_model
 
     def test_smolvla_type_tries_from_pretrained_first(self):
         with patch("lerobot_edge.core.utils.importlib.import_module") as mock_import:
@@ -89,13 +106,16 @@ class TestLoadPolicyFromCheckpoint:
         mock_config.device = None
         mock_model = SimplePolicy()
 
-        with patch("lerobot.policies.factory.make_policy_config", return_value=mock_config) as mock_make_config:
-            with patch("lerobot.policies.factory.make_policy", return_value=mock_model) as mock_make:
-                result = load_policy_from_checkpoint("test/path", "act", "cpu")
-                mock_make_config.assert_called_once_with("act")
-                assert mock_config.pretrained_path == "test/path"
-                assert mock_config.device == "cpu"
-                assert result is mock_model
+        with patch(
+            "lerobot.policies.factory.make_policy_config", return_value=mock_config
+        ) as mock_make_config, patch(
+            "lerobot.policies.factory.make_policy", return_value=mock_model
+        ):
+            result = load_policy_from_checkpoint("test/path", "act", "cpu")
+            mock_make_config.assert_called_once_with("act")
+            assert mock_config.pretrained_path == "test/path"
+            assert mock_config.device == "cpu"
+            assert result is mock_model
 
     def test_model_is_in_eval_mode(self):
         mock_cls = MagicMock()
@@ -129,7 +149,14 @@ class TestLoadPolicyFromCheckpoint:
         mock_factory_config = MagicMock(return_value=mock_config)
         mock_factory_make = MagicMock(return_value=mock_model)
 
-        with patch.dict("sys.modules", {"lerobot.policies.factory": MagicMock(make_policy_config=mock_factory_config, make_policy=mock_factory_make)}):
+        with patch.dict(
+            "sys.modules",
+            {
+                "lerobot.policies.factory": MagicMock(
+                    make_policy_config=mock_factory_config, make_policy=mock_factory_make
+                )
+            },
+        ):
             load_policy_from_checkpoint("test", "act", "cpu")
             mock_model.to.assert_called_once_with("cpu")
             mock_model.eval.assert_called_once()
@@ -143,6 +170,13 @@ class TestLoadPolicyFromCheckpoint:
         mock_factory_config = MagicMock(return_value=mock_config)
         mock_factory_make = MagicMock(return_value=mock_model)
 
-        with patch.dict("sys.modules", {"lerobot.policies.factory": MagicMock(make_policy_config=mock_factory_config, make_policy=mock_factory_make)}):
+        with patch.dict(
+            "sys.modules",
+            {
+                "lerobot.policies.factory": MagicMock(
+                    make_policy_config=mock_factory_config, make_policy=mock_factory_make
+                )
+            },
+        ):
             result = load_policy_from_checkpoint("test", "unknown_type", "cpu")
             assert result is mock_model

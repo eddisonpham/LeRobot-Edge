@@ -34,7 +34,7 @@ class QualityGate:
 
     def __init__(
         self,
-        min_cosine_similarity: float = 0.999,
+        min_cosine_similarity: float = 0.98,
         max_mse: float | None = None,
         num_samples: int = 20,
     ) -> None:

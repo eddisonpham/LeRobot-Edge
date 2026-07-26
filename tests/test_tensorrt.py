@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import tempfile
 from unittest.mock import patch
 
 import pytest
-import torch
 
 from lerobot_edge.export.tensorrt import HAS_TENSORRT, get_tensorrt_info
 
@@ -33,6 +31,7 @@ class TestTensorRTAvailability:
 class TestTensorRTExportGuard:
     def test_export_raises_without_trt(self):
         from lerobot_edge.export.tensorrt import export_onnx_to_tensorrt
+
         if not HAS_TENSORRT:
             with pytest.raises(ImportError, match="TensorRT is required"):
                 export_onnx_to_tensorrt("dummy.onnx", "dummy.engine")
@@ -42,6 +41,7 @@ class TestTensorRTExportGuard:
 class TestTensorRTBackendWithTrt:
     def test_backend_init_raises_without_pycuda(self):
         from lerobot_edge.export.tensorrt import TensorRTBackend
+
         with patch.dict("sys.modules", {"pycuda": None, "pycuda.driver": None}):
             with pytest.raises(ImportError, match="pycuda is required"):
                 TensorRTBackend("dummy.engine")
