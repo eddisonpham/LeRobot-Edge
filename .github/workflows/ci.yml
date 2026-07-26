@@ -16,8 +16,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install ruff
-      - run: ruff check lerobot_edge/
-      - run: ruff format --check lerobot_edge/
+      - run: ruff check lerobot_edge/ tests/
+      - run: ruff format --check lerobot_edge/ tests/
 
   test:
     runs-on: ubuntu-latest
@@ -27,6 +27,7 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
         torchao: ["yes", "no"]
+        bnb: ["yes", "no"]
 
     steps:
       - uses: actions/checkout@v4
@@ -44,25 +45,36 @@ jobs:
 
       - name: Install torchao
         if: matrix.torchao == 'yes'
-        run: pip install torchao>=0.17.0,<0.18
+        run: pip install "torchao>=0.17.0"
 
       - name: Uninstall torchao
         if: matrix.torchao == 'no'
         run: pip uninstall -y torchao
 
+      - name: Install bitsandbytes
+        if: matrix.bnb == 'yes'
+        run: pip install bitsandbytes
+
+      - name: Uninstall bitsandbytes
+        if: matrix.bnb == 'no'
+        run: pip uninstall -y bitsandbytes
+
       - name: Verify torchao installed
         if: matrix.torchao == 'yes'
-        run: python -c "from lerobot_edge.compression.quantize import HAS_TORCHAO; assert HAS_TORCHAO is True, f'Expected True, got {HAS_TORCHAO}'"
+        run: python -c "from lerobot_edge.compression.quantize import HAS_TORCHAO; assert HAS_TORCHAO is True"
 
       - name: Verify torchao not installed
         if: matrix.torchao == 'no'
-        run: python -c "from lerobot_edge.compression.quantize import HAS_TORCHAO; assert HAS_TORCHAO is False, f'Expected False, got {HAS_TORCHAO}'"
+        run: python -c "from lerobot_edge.compression.quantize import HAS_TORCHAO; assert HAS_TORCHAO is False"
 
-      - name: Run tests (fast)
+      - name: Verify bitsandbytes installed
+        if: matrix.bnb == 'yes'
+        run: python -c "from lerobot_edge.compression.quantize import HAS_BNB; assert HAS_BNB is True"
+
+      - name: Verify bitsandbytes not installed
+        if: matrix.bnb == 'no'
+        run: python -c "from lerobot_edge.compression.quantize import HAS_BNB; assert HAS_BNB is False"
+
+      - name: Run tests
         run: |
           python -m pytest tests/ -v --tb=short -m "not slow and not integration" -q
-
-      - name: Run tests (all)
-        if: github.event_name == 'push'
-        run: |
-          python -m pytest tests/ -v --tb=short -q

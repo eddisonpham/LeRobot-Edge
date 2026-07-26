@@ -61,8 +61,9 @@ class TestTensorRTBackendEdgeCases:
     def test_backend_init_raises_without_pycuda(self):
         from lerobot_edge.export.tensorrt import TensorRTBackend
 
-        with patch.dict("sys.modules", {"pycuda": None, "pycuda.driver": None}), pytest.raises(
-            ImportError, match="pycuda is required"
+        with (
+            patch.dict("sys.modules", {"pycuda": None, "pycuda.driver": None}),
+            pytest.raises(ImportError, match="pycuda is required"),
         ):
             TensorRTBackend("dummy.engine")
 

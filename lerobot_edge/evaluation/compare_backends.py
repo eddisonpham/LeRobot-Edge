@@ -61,9 +61,15 @@ def _simple_model():
 
 DEFAULT_BACKENDS = ["identity", "int8"]
 ALL_BACKENDS = [
-    "identity", "int8", "bnb_int8", "nf4", "bnb_fp4",
-    "onnx_fp32", "onnx_int8",
-    "identity_compile", "int8_compile",
+    "identity",
+    "int8",
+    "bnb_int8",
+    "nf4",
+    "bnb_fp4",
+    "onnx_fp32",
+    "onnx_int8",
+    "identity_compile",
+    "int8_compile",
 ]
 
 
@@ -163,16 +169,30 @@ def compare_all_backends(
         from lerobot_edge.core.configs import EdgeOnnxFp32Config
 
         _bench_onnx(
-            model, dummy_input, dev, warmup, num_runs, results,
-            "onnx_fp32", EdgeOnnxFp32Config, "model.onnx",
+            model,
+            dummy_input,
+            dev,
+            warmup,
+            num_runs,
+            results,
+            "onnx_fp32",
+            EdgeOnnxFp32Config,
+            "model.onnx",
         )
 
     if "onnx_int8" in backends:
         from lerobot_edge.core.configs import EdgeOnnxInt8Config
 
         _bench_onnx(
-            model, dummy_input, dev, warmup, num_runs, results,
-            "onnx_int8", EdgeOnnxInt8Config, "model_int8.onnx",
+            model,
+            dummy_input,
+            dev,
+            warmup,
+            num_runs,
+            results,
+            "onnx_int8",
+            EdgeOnnxInt8Config,
+            "model_int8.onnx",
         )
 
     return results

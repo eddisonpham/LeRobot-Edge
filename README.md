@@ -1,162 +1,100 @@
-# lerobot-edge
+# LeRobot Edge
 
-> Policy compression and edge deployment plugin for [HuggingFace LeRobot](https://github.com/huggingface/lerobot)
+> Quantization, export, and benchmarking pipeline for deploying [HuggingFace LeRobot](https://github.com/huggingface/lerobot) policies on edge devices.
 
-**lerobot_edge** plugs into LeRobot's policy system to add quantization (INT8 via torchao), ONNX export, TensorRT inference, teacher-student distillation, benchmarking with quality gates, evaluation metrics, and experiment tracking for edge deployment.
+LeRobot Edge plugs into LeRobot's policy system with zero source modifications. It adds INT8/4-bit quantization, ONNX/TensorRT export, quality validation, and benchmarking — everything you need to compress and deploy VLA models on GPU and CPU hardware.
 
-## Architecture
-
-```mermaid
-graph TD
-    A[FP32 Checkpoint<br/>e.g. lerobot/smolvla_base] --> B{Compression Path}
-    B --> C[compression/<br/>INT8 via torchao / 4-bit]
-    B --> D[compression/<br/>Teacher-Student]
-    C --> E[Compressed Model]
-    D --> E
-    E --> F[export/<br/>ONNX Runtime]
-    F --> G[export/<br/>TensorRT GPU]
-    E --> H[evaluation/<br/>Benchmark + Metrics]
-    F --> H
-    G --> H
-    H --> I[evaluation/<br/>Pareto Report]
-    I --> J[tracking/<br/>W&B Tracking]
-```
-
-### Package Layout
-
-```
-lerobot_edge/
-  core/              # Backends, configs, router, utilities
-  compression/       # Quantization (INT8 via torchao, 4-bit) and distillation
-  export/            # ONNX export and TensorRT export with I/O bindings
-  evaluation/        # Benchmark harness, metrics, Pareto reports, quality gate
-  tracking/          # W&B experiment tracking, local JSON fallback
-scripts/             # Shell scripts for common operations
-```
+![LeRobot Edge Pipeline](docs/diagrams/hero.png)
 
 ## Installation
 
 ```bash
 pip install lerobot-edge
-pip install "lerobot-edge[onnx]"        # ONNX support
-pip install "lerobot-edge[quantize]"    # bitsandbytes
-pip install "lerobot-edge[tensorrt]"    # TensorRT (GPU, requires pycuda)
-pip install "lerobot-edge[wandb]"       # W&B experiment tracking
-pip install "lerobot-edge[all]"         # everything
+pip install "lerobot-edge[onnx]"       # ONNX export
+pip install "lerobot-edge[quantize]"   # bitsandbytes INT8/4-bit
+pip install "lerobot-edge[tensorrt]"   # TensorRT (GPU)
+pip install "lerobot-edge[wandb]"      # experiment tracking
+pip install "lerobot-edge[all]"        # everything
 ```
 
 ## Quickstart
 
-### Evaluate with edge plugin
-
 ```bash
+# Evaluate a quantized policy on PushT
 lerobot-eval \
   --policy.type=edge_quant_int8 \
   --policy.pretrained_path=lerobot/smolvla_base \
   --env.type=pusht --eval.n_episodes=10
-```
 
-### Benchmark
+# Benchmark all backends
+python -m lerobot_edge.evaluation.compare_backends \
+  --checkpoint lerobot/smolvla_base \
+  --backends identity int8 bnb_int8 nf4 bnb_fp4
 
-```bash
-bash scripts/benchmark.sh lerobot/smolvla_base
-```
-
-### Quantize
-
-```bash
-bash scripts/quantize.sh lerobot/smolvla_base ./quantized dynamic_int8
-```
-
-### Full pipeline
-
-```bash
-bash scripts/run_pipeline.sh lerobot/smolvla_base
+# Quantize and save
+python -m lerobot_edge.compression.quantize \
+  --source lerobot/smolvla_base \
+  --output ./quantized \
+  --method dynamic_int8
 ```
 
 ## Available Variants
 
-| Variant | Description | Requirements |
-|---------|-------------|--------------|
-| `edge_identity` | Passthrough wrapper | Core |
-| `edge_quant_int8` | Dynamic INT8 quantization (torchao) | Core |
-| `edge_onnx_fp32` | ONNX Runtime (FP32) | `lerobot-edge[onnx]` |
-| `edge_onnx_int8` | ONNX Runtime (INT8) | `lerobot-edge[onnx]` |
-| `edge_distilled` | Teacher-student distilled | Core |
-| `edge_distilled_onnx_int8` | Distilled + ONNX + INT8 | `lerobot-edge[onnx]` |
+| Variant | Description | Install |
+|---------|-------------|---------|
+| `edge_identity` | FP32 passthrough | core |
+| `edge_quant_int8` | Dynamic INT8 (torchao) | core |
+| `edge_quant_bnb_int8` | INT8 (bitsandbytes) | `[quantize]` |
+| `edge_quant_bnb_nf4` | NF4 4-bit (bitsandbytes) | `[quantize]` |
+| `edge_quant_bnb_fp4` | FP4 4-bit (bitsandbytes) | `[quantize]` |
+| `edge_onnx_fp32` | ONNX Runtime FP32 | `[onnx]` |
+| `edge_onnx_int8` | ONNX Runtime INT8 | `[onnx]` |
+| `edge_distilled` | Teacher-student distilled | core |
 
 ## Benchmark Results
 
-SmolVLA (864 MB, ~450M params) — measured on NVIDIA RTX 5060 and Intel CPU. All benchmarks use batch_size=1 (single-sample inference, typical for real-time robotics control loops).
+SmolVLA (864 MB, ~450M params) on NVIDIA RTX 5060 and Intel CPU. batch_size=1.
 
-### GPU vs CPU Latency
+### GPU vs CPU
 
 | Backend | GPU Latency | GPU FPS | CPU Latency | CPU FPS | Overhead |
 |---------|------------|---------|------------|---------|----------|
-| Identity (FP32) | 1.47 ms | 681.8 | 3.75 ms | 266.8 | -- |
+| FP32 (baseline) | 1.47 ms | 681.8 | 3.75 ms | 266.8 | -- |
 | Dynamic INT8 | 1.55 ms | 644.6 | 5.78 ms | 173.1 | GPU +5% / CPU +54% |
 | FP32 + torch.compile | 1.87 ms | 534.8 | -- | -- | GPU +27% |
 | INT8 + torch.compile | 2.50 ms | 399.5 | -- | -- | GPU +70% |
 
-*batch_size=1, single-sample inference*
+### Memory
 
-### Memory Footprint
-
-| Format | Model Size | Compression |
-|--------|-----------|-------------|
-| FP32 (original) | 864 MB | -- |
-| Dynamic INT8 | 864 MB | Weights FP32, activations quantized at runtime |
-| Static INT8 | ~216 MB | 4x † |
-| 4-bit NF4 | ~108 MB | 8x † |
-
-† Estimated based on theoretical compression ratios. Not yet benchmarked on this model.
+| Format | Model Size | Notes |
+|--------|-----------|-------|
+| FP32 | 864 MB | Baseline |
+| Dynamic INT8 | 864 MB | Weights stay FP32, activations quantized |
+| Static INT8 | ~216 MB | 4x compression (estimated) |
+| 4-bit NF4 | ~108 MB | 8x compression (estimated) |
 
 ### Quality Gate
 
-| Backend | Cosine Sim | MSE | Gate |
-|---------|-----------|-----|------|
-| Identity (FP32) | 1.0000 | 0.0000 | PASS |
+| Backend | Cosine Sim | MSE | Status |
+|---------|-----------|-----|--------|
+| FP32 | 1.0000 | 0.0000 | PASS |
 | Dynamic INT8 (GPU) | 0.9971 | 0.0067 | PASS |
 | Dynamic INT8 (CPU) | 0.9878 | 0.0101 | FAIL |
 | INT8 + torch.compile | 0.9946 | 0.0086 | PASS |
 
-### When to Use Each Backend
+## Quantization Methods
 
-**GPU (recommended for latency-critical applications):**
-- INT8 quantization adds only 5% overhead on GPU — INT8 tensor cores handle dequantization efficiently
-- Quality gate passes (cos=0.9971) — quantization divergence is minimal
-- Best for: NVIDIA GPUs, Jetson Orin, any edge device with CUDA support
+| Method | Library | Bit Width | Best For |
+|--------|---------|-----------|----------|
+| Dynamic INT8 | torchao | 8-bit | GPU with CUDA |
+| Linear8bitLt | bitsandbytes | 8-bit | GPU with CUDA |
+| NF4 | bitsandbytes | 4-bit | Memory-constrained GPU |
+| FP4 | bitsandbytes | 4-bit | Memory-constrained GPU |
+| Static INT8 | torchao | 8-bit | Disk space (needs calibration) |
 
-**CPU (for resource-constrained devices):**
-- INT8 quantization adds 54% overhead on CPU — dynamic quantization dispatch cost dominates
-- CPU INT8 produces lower cosine similarity (0.9878 vs 0.9971 on GPU) due to dynamic quantization precision differences
-- Best for: Raspberry Pi, Intel NUC, devices without GPU where memory savings matter more than speed
+## How It Works
 
-**torch.compile:**
-- Adds compilation overhead on SmolVLA (~500M params) — 27% slower than FP32
-- Compilation overhead dominates on smaller models; kernel fusion benefits emerge at scale where the JIT cost is amortized across many forward passes
-- Best for: Larger models where JIT cost is amortized across many forward passes
-
-### Dynamic vs Static INT8
-
-- **Dynamic INT8** (default): Quantizes activations at runtime, no calibration data needed. Weights remain FP32. Better quality but no disk/memory savings.
-- **Static INT8**: Quantizes weights offline using calibration data. 4x smaller model, but requires a calibration dataset and may lose more precision.
-
-## Makefile
-
-```bash
-make install-dev    # pip install -e ".[dev,all]"
-make test           # run non-slow tests
-make lint           # ruff check
-make format         # ruff format
-make typecheck      # mypy
-make ci             # lint + typecheck + test
-make benchmark      # run benchmark
-make quantize       # quantize checkpoint
-make evaluate       # generate report
-```
-
-## API Usage
+Config classes register with LeRobot's `draccus.ChoiceRegistry` via `@PreTrainedConfig.register_subclass("edge_*")`. This means zero changes to LeRobot source — install `lerobot-edge` and change the policy type in your CLI or config.
 
 ```python
 from lerobot_edge.core.configs import EdgeQuantInt8Config
@@ -170,19 +108,18 @@ backend = QuantizedBackend.from_policy(policy, config)
 # Quality gate
 gate = QualityGate(min_cosine_similarity=0.999)
 result = gate.check(original, quantized, dummy_input)
-
-# Tracking
-from lerobot_edge.tracking import ExperimentTracker, TrackConfig
-tracker = ExperimentTracker(config=TrackConfig(project="my-project"))
-tracker.init_run("run-1")
-tracker.log_benchmark_result(result_dict)
-tracker.finish_run()
 ```
 
-## How It Works
+## Development
 
-Config classes register with LeRobot's `draccus.ChoiceRegistry` via `@PreTrainedConfig.register_subclass("edge_*")`. Zero changes to LeRobot source required.
+```bash
+make install-dev   # pip install -e ".[dev,all]"
+make test          # non-slow tests
+make lint          # ruff check
+make format        # ruff format
+make ci            # lint + test
+```
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+Apache-2.0

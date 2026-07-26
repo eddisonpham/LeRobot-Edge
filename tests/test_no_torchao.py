@@ -45,8 +45,9 @@ class TestNoTorchaoPaths:
         """dynamic_int8_quantize should raise ImportError without torchao."""
         from lerobot_edge.compression.quantize import dynamic_int8_quantize
 
-        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False), pytest.raises(
-            ImportError, match="torchao is required"
+        with (
+            patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False),
+            pytest.raises(ImportError, match="torchao is required"),
         ):
             dynamic_int8_quantize(simple_model)
 
@@ -54,8 +55,9 @@ class TestNoTorchaoPaths:
         """static_int8_quantize should raise ImportError without torchao."""
         from lerobot_edge.compression.quantize import static_int8_quantize
 
-        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False), pytest.raises(
-            ImportError, match="torchao is required"
+        with (
+            patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False),
+            pytest.raises(ImportError, match="torchao is required"),
         ):
             static_int8_quantize(simple_model, {"x": torch.randn(1, 7)})
 
@@ -65,8 +67,9 @@ class TestNoTorchaoPaths:
         from lerobot_edge.core.configs import EdgeQuantInt8Config
 
         config = EdgeQuantInt8Config(device="cpu")
-        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False), pytest.raises(
-            ImportError, match="torchao is required"
+        with (
+            patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False),
+            pytest.raises(ImportError, match="torchao is required"),
         ):
             QuantizedBackend.from_policy(simple_model, config)
 

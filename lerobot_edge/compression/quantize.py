@@ -297,9 +297,7 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
         ) from e
 
     linear_layers = [
-        (name, module)
-        for name, module in model.named_modules()
-        if isinstance(module, nn.Linear)
+        (name, module) for name, module in model.named_modules() if isinstance(module, nn.Linear)
     ]
     if not linear_layers:
         logger.warning("No nn.Linear modules found to quantize.")
