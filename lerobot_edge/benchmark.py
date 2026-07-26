@@ -328,7 +328,7 @@ def _build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, tor
 
     if not dummy_input:
         dummy_input = {
-            "observation.images": torch.randn(1, 3, 224, 224, device=device),
+            "observation.images.front": torch.randn(1, 3, 224, 224, device=device),
             "observation.state": torch.randn(1, 2, device=device),
         }
 
