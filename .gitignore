@@ -44,3 +44,7 @@ vla-edge-plan/
 
 # Generated diagrams
 docs/diagrams/
+
+# Experiment tracking
+wandb_logs/
+wandb/

@@ -168,9 +168,13 @@ def compare_backends(
 ) -> QuantizationQualityReport:
     """Run original and quantized models on dummy inputs and compute full quality report.
 
+    Both models must implement ``select_action(batch) -> Tensor``.
+    This is the standard interface used by LeRobot policies and by
+    ``NativePyTorchBackend`` / ``IdentityBackend``.
+
     Args:
-        original: The original FP32 model.
-        quantized: The quantized model.
+        original: The original FP32 model with a ``select_action`` method.
+        quantized: The quantized model with a ``select_action`` method.
         dummy_input: Input batch for inference.
         num_samples: Number of forward passes to compare.
 

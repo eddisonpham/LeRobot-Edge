@@ -49,6 +49,7 @@ class ExperimentTracker:
         self._enabled = enabled if enabled is not None else HAS_WANDB
         self._run: Any = None
         self._local_log: list[dict[str, Any]] = []
+        self._finished: bool = False
 
         if self._enabled:
             logger.info("W&B tracking enabled (project=%s)", self._config.project)
@@ -57,6 +58,7 @@ class ExperimentTracker:
 
     def init_run(self, run_name: str | None = None, **kwargs: Any) -> None:
         """Initialize a W&B run or start local logging."""
+        self._finished = False
         if self._enabled:
             self._run = wandb.init(
                 project=self._config.project,
@@ -71,6 +73,8 @@ class ExperimentTracker:
 
     def log_metrics(self, metrics: dict[str, Any], step: int | None = None) -> None:
         """Log scalar metrics."""
+        if self._finished:
+            logger.warning("log_metrics called after finish_run — data will be lost")
         if self._enabled and self._run is not None:
             wandb.log(metrics, step=step)
         else:
@@ -166,6 +170,7 @@ class ExperimentTracker:
             self._run = None
         elif self._local_log:
             self._save_local_log()
+        self._finished = True
 
     def _save_local_log(self) -> None:
         """Save local JSON log when wandb is unavailable."""
