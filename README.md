@@ -2,7 +2,7 @@
 
 > Policy compression and edge deployment plugin for [HuggingFace LeRobot](https://github.com/huggingface/lerobot)
 
-**lerobot_edge** is a standalone extension package that plugs into LeRobot's policy system to add quantization, ONNX export, TensorRT inference, teacher-student distillation, benchmarking, evaluation metrics, and experiment tracking for edge deployment.
+**lerobot_edge** plugs into LeRobot's policy system to add quantization (INT8 via torchao), ONNX export, TensorRT inference, teacher-student distillation, benchmarking with quality gates, evaluation metrics, and experiment tracking for edge deployment.
 
 ## Architecture
 
@@ -29,12 +29,8 @@ lerobot_edge/
   core/              # Backends, configs, router, utilities
   compression/       # Quantization (INT8 via torchao, 4-bit) and distillation
   export/            # ONNX export and TensorRT export with I/O bindings
-  evaluation/        # Benchmark harness, metrics, Pareto reports, backend comparison
+  evaluation/        # Benchmark harness, metrics, Pareto reports, quality gate
   tracking/          # W&B experiment tracking, local JSON fallback
-  configs.py         # Config dataclasses (backward-compatible re-export)
-  quantize.py        # Quantization functions (backward-compatible re-export)
-  benchmark.py       # Benchmark harness (backward-compatible re-export)
-  ...
 ```
 
 ## Installation
@@ -50,8 +46,7 @@ pip install "lerobot-edge[all]"         # everything
 
 ### Dependencies
 
-- **torchao** (>=0.17.0) is the primary quantization backend, replacing the deprecated `torch.ao.quantization`. Dynamic INT8 quantization uses `Int8DynamicActivationInt8WeightConfig`, and static INT8 uses `AffineQuantizedMinMaxObserver` with custom `ObservedLinear` / `QuantizedLinear` modules.
-- When torchao is not installed, the codebase falls back to legacy `torch.quantization.quantize_dynamic` automatically.
+- **torchao** (>=0.17.0) is required for quantization. Dynamic INT8 uses `Int8DynamicActivationInt8WeightConfig`, static INT8 uses `AffineQuantizedMinMaxObserver` with custom `ObservedLinear` / `QuantizedLinear` modules.
 
 ## Quickstart
 
@@ -157,7 +152,7 @@ lerobot-edge-report \
 By default, `CompressedPolicy._build_backend_from_checkpoint` loads SmolVLA checkpoints. To use a different architecture, set `source_policy_type` in your config:
 
 ```python
-from lerobot_edge.configs import EdgeQuantInt8Config
+from lerobot_edge.core.configs import EdgeQuantInt8Config
 
 config = EdgeQuantInt8Config(
     source_pretrained_path="path/to/checkpoint",
@@ -168,23 +163,54 @@ config = EdgeQuantInt8Config(
 
 ## Evaluation Metrics
 
-The `evaluation` module provides tools for assessing quantization quality:
+### Quality Gate
 
-- **Output Divergence**: MSE, MAE, cosine similarity, max absolute error between original and quantized model outputs
-- **Quantization Quality Report**: Compression ratio, memory savings, speedup ratio, quality degradation
-- **Bootstrap Confidence Intervals**: Statistical confidence intervals for any metric
-- **Backend Comparison**: Side-by-side comparison of original vs quantized models
+Quantization is validated against a divergence gate before deployment. If cosine similarity between original and quantized outputs drops below the threshold (default 0.999, mirroring the D-Robotics pattern), the gate fails and the benchmark reports a failure:
+
+```python
+from lerobot_edge.evaluation import QualityGate
+
+gate = QualityGate(min_cosine_similarity=0.999, num_samples=20)
+result = gate.check(original_model, quantized_model, dummy_input)
+print(result.message)  # "PASSED (cos=0.999998, mse=0.00000123)" or "FAILED: ..."
+if not result.passed:
+    raise RuntimeError(result.message)
+```
+
+The gate runs automatically during `compare_backends` and `lerobot-edge-benchmark`.
+
+### Backend Comparison
+
+Benchmark results on a 7-layer MLP (CPU, 50 runs, 10 warmup):
+
+| Backend | Latency (ms) | Throughput (FPS) | Quality Gate |
+|---------|-------------|-----------------|-------------|
+| Identity (FP32) | 0.05 | 21,329 | cos=1.000000 |
+| Dynamic INT8 | 0.84 | 1,194 | cos=1.000000 |
+
+> INT8 overhead on small models is expected. Real benefits appear on models >100M params or with `torch.compile`.
+
+To benchmark a real checkpoint, install `lerobot` with its simulation environment and run:
+
+```bash
+python -m lerobot_edge.evaluation.compare_backends \
+  --checkpoint lerobot/smolvla_base --policy-type smolvla
+```
 
 ```python
 from lerobot_edge.evaluation import compare_backends, bootstrap_confidence_interval
 
-# Compare original vs quantized model
 report = compare_backends(original_model, quantized_model, dummy_input, num_samples=10)
 print(report.to_dict())
 
-# Compute confidence intervals for latency measurements
 mean, lower, upper = bootstrap_confidence_interval(latency_list, confidence=0.95)
 ```
+
+### Metrics Provided
+
+- **Output Divergence**: MSE, MAE, cosine similarity, max absolute error
+- **Quality Report**: Compression ratio, memory savings, speedup ratio, quality degradation
+- **Bootstrap Confidence Intervals**: Statistical confidence for any metric
 
 ## Experiment Tracking
 

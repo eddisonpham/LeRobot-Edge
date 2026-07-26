@@ -166,9 +166,10 @@ def main() -> None:
     results["policy_type"] = args.policy_type if args.checkpoint else None
     print_comparison(results)
 
+    quant_config = EdgeQuantInt8Config(device=args.device)
+    quantized_backend = QuantizedBackend.from_policy(model, quant_config)
     gate = QualityGate(min_cosine_similarity=0.999, num_samples=10)
-    quantized_model = QuantizedBackend.from_policy(model, EdgeQuantInt8Config(device=args.device))
-    gate_result = gate.check(model, quantized_model._policy, dummy_input)
+    gate_result = gate.check(model, quantized_backend._policy, dummy_input)
     results["quality_gate"] = {
         "passed": gate_result.passed,
         "cosine_similarity": gate_result.cosine_similarity,

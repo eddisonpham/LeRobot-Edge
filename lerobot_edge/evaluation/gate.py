@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from lerobot_edge.evaluation.metrics import OutputDivergence, measure_output_divergence
-from lerobot_edge.core.utils import measure_model_memory
+from lerobot_edge.evaluation.metrics import measure_output_divergence
 
 import torch
 import torch.nn as nn
@@ -84,15 +83,7 @@ class QualityGate:
         else:
             msg = f"FAILED: {'; '.join(parts)}"
 
-        orig_mem = measure_model_memory(original)
-        quant_mem = measure_model_memory(quantized)
-
-        logger.info(
-            "Quality gate %s | params: %d -> %d | memory: %.2f -> %.2f MB",
-            "PASSED" if passed else "FAILED",
-            orig_mem["num_parameters"], quant_mem["num_parameters"],
-            orig_mem["total_mb"], quant_mem["total_mb"],
-        )
+        logger.info("Quality gate %s", "PASSED" if passed else "FAILED")
 
         return QualityGateResult(
             passed=passed,

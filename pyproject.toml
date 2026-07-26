@@ -59,10 +59,9 @@ all = [
 ]
 
 [project.scripts]
-lerobot-edge-benchmark = "lerobot_edge.benchmark:main"
-lerobot-edge-quantize = "lerobot_edge.quantize:main"
-lerobot-edge-report = "lerobot_edge.report:main"
-# lerobot-edge-distill: not yet implemented (distill.py main raises NotImplementedError)
+lerobot-edge-benchmark = "lerobot_edge.evaluation.benchmark:main"
+lerobot-edge-quantize = "lerobot_edge.compression.quantize:main"
+lerobot-edge-report = "lerobot_edge.evaluation.report:main"
 
 [project.urls]
 Homepage = "https://github.com/lerobot-edge/lerobot-edge"
