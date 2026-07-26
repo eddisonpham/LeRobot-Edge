@@ -113,6 +113,7 @@ def load_policy_from_checkpoint(
             cls = getattr(mod, cls_name)
             logger.info("Loading %s via from_pretrained(%s)", policy_type, checkpoint)
             model = cls.from_pretrained(checkpoint)
+            model.to(device)
             model.eval()
             return model
         except Exception as e:
@@ -124,5 +125,6 @@ def load_policy_from_checkpoint(
     config.pretrained_path = checkpoint
     config.device = device
     model = make_policy(config)
+    model.to(device)
     model.eval()
     return model
