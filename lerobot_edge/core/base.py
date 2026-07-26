@@ -119,13 +119,8 @@ class CompressedPolicy(PreTrainedPolicy):
 
         logger.info("Loading policy from %s", source)
         try:
-            from lerobot.policies.factory import make_policy, make_policy_config
-
-            base_config = make_policy_config(config.source_policy_type)
-            base_config.pretrained_path = source
-            base_config.device = str(device)
-            policy = make_policy(base_config)
-            policy.eval()
+            from lerobot_edge.core.utils import load_policy_from_checkpoint
+            policy = load_policy_from_checkpoint(source, config.source_policy_type or "smolvla", str(device))
         except Exception as e:
             logger.error("Failed to load policy from %s: %s", source, e)
             return _PlaceholderBackend(str(device))

@@ -287,15 +287,10 @@ def main() -> None:
 
     logger.info("Loading policy from %s...", args.source)
 
-    from lerobot.policies.factory import make_policy, make_policy_config
-
-    config = make_policy_config("smolvla")  # TODO: accept policy type via CLI
-    config.pretrained_path = args.source
-    config.device = args.device
+    from lerobot_edge.core.utils import load_policy_from_checkpoint
 
     try:
-        policy = make_policy(config)
-        policy.eval()
+        policy = load_policy_from_checkpoint(args.source, "smolvla", args.device)
     except Exception as e:
         logger.error("Failed to load policy: %s", e)
         return

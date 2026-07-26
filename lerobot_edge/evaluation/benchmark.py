@@ -246,9 +246,9 @@ def main() -> None:
     logger.info("Variants: %s", args.variants)
     logger.info("Device profile: %s", args.device_profile)
 
-    from lerobot.policies.factory import make_policy, make_policy_config
     from lerobot_edge.core.base import IdentityBackend, NativePyTorchBackend
     from lerobot_edge.compression.quantize import QuantizedBackend
+    from lerobot_edge.core.utils import load_policy_from_checkpoint
     from lerobot_edge.core.configs import (
         EdgeIdentityConfig,
         EdgeQuantInt8Config,
@@ -258,14 +258,9 @@ def main() -> None:
 
     device = torch.device(args.device_profile)
 
-    config = make_policy_config("smolvla")  # TODO: accept policy type via CLI
-    config.pretrained_path = args.checkpoint
-    config.device = str(device)
-
     logger.info("Loading policy from %s...", args.checkpoint)
     try:
-        policy = make_policy(config)
-        policy.eval()
+        policy = load_policy_from_checkpoint(args.checkpoint, "smolvla", str(device))
     except Exception as e:
         logger.error("Failed to load policy: %s", e)
         return

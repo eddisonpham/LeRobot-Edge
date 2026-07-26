@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import importlib
+import logging
 import math
 import subprocess
+from typing import Any
+
 import torch
 import torch.nn as nn
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "get_git_commit_hash",
@@ -13,6 +19,7 @@ __all__ = [
     "measure_peak_memory_mb",
     "sigmoid_scalar",
     "build_dummy_input",
+    "load_policy_from_checkpoint",
 ]
 
 
@@ -83,3 +90,39 @@ def build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torc
         }
 
     return dummy_input
+
+
+def load_policy_from_checkpoint(
+    checkpoint: str,
+    policy_type: str = "smolvla",
+    device: str = "cpu",
+) -> nn.Module:
+    """Load a LeRobot policy from a checkpoint path or HuggingFace Hub ID.
+
+    Tries from_pretrained for known architectures first, then falls back
+    to the factory method for other policy types.
+    """
+    _KNOWN_ARCH = {
+        "smolvla": "lerobot.policies.smolvla.modeling_smolvla.SmolVLAPolicy",
+    }
+
+    if policy_type in _KNOWN_ARCH:
+        try:
+            mod_path, cls_name = _KNOWN_ARCH[policy_type].rsplit(".", 1)
+            mod = importlib.import_module(mod_path)
+            cls = getattr(mod, cls_name)
+            logger.info("Loading %s via from_pretrained(%s)", policy_type, checkpoint)
+            model = cls.from_pretrained(checkpoint)
+            model.eval()
+            return model
+        except Exception as e:
+            logger.debug("from_pretrained failed for %s: %s", policy_type, e)
+
+    logger.info("Loading %s via factory for %s", policy_type, checkpoint)
+    from lerobot.policies.factory import make_policy, make_policy_config
+    config = make_policy_config(policy_type)
+    config.pretrained_path = checkpoint
+    config.device = device
+    model = make_policy(config)
+    model.eval()
+    return model

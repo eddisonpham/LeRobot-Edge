@@ -15,7 +15,7 @@ import torch.nn as nn
 from lerobot_edge.core.base import IdentityBackend
 from lerobot_edge.compression.quantize import QuantizedBackend
 from lerobot_edge.core.configs import EdgeQuantInt8Config
-from lerobot_edge.core.utils import build_dummy_input, measure_model_memory
+from lerobot_edge.core.utils import build_dummy_input, load_policy_from_checkpoint, measure_model_memory
 from lerobot_edge.evaluation.gate import QualityGate
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,8 @@ def compare_all_backends(
     warmup: int = 10,
     num_runs: int = 100,
     device: str = "cpu",
+    enable_onnx: bool = False,
+    enable_onnx_int8: bool = False,
 ) -> dict[str, Any]:
     """Benchmark identity vs INT8 quantized backend."""
     dev = torch.device(device)
@@ -66,21 +68,47 @@ def compare_all_backends(
     if hasattr(quantized, "_policy"):
         results["dynamic_int8"]["memory"] = measure_model_memory(quantized._policy)
 
-    try:
-        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend, HAS_ONNX, HAS_ORT
-        if HAS_ONNX and HAS_ORT:
-            from lerobot_edge.core.configs import EdgeOnnxFp32Config
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmpdir:
-                onnx_path = Path(tmpdir) / "model.onnx"
-                onnx_config = EdgeOnnxFp32Config(device=device)
-                export_policy_to_onnx(model, onnx_config, onnx_path)
-                ort_backend = OnnxRuntimeBackend(onnx_path, device=dev)
-                results["onnx_fp32"] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
-    except Exception as e:
-        logger.warning("ONNX benchmark skipped: %s", e)
+    if enable_onnx:
+        _bench_onnx_fp32(model, dummy_input, dev, warmup, num_runs, results)
+
+    if enable_onnx_int8:
+        _bench_onnx_int8(model, dummy_input, dev, warmup, num_runs, results)
 
     return results
+
+
+def _bench_onnx_fp32(model, dummy_input, dev, warmup, num_runs, results):
+    try:
+        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend, HAS_ONNX, HAS_ORT
+        if not (HAS_ONNX and HAS_ORT):
+            logger.warning("ONNX FP32 benchmark skipped: onnx/onnxruntime not installed")
+            return
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            onnx_path = Path(tmpdir) / "model.onnx"
+            from lerobot_edge.core.configs import EdgeOnnxFp32Config
+            export_policy_to_onnx(model, EdgeOnnxFp32Config(device=str(dev)), onnx_path)
+            ort_backend = OnnxRuntimeBackend(onnx_path, device=dev)
+            results["onnx_fp32"] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
+    except Exception as e:
+        logger.warning("ONNX FP32 benchmark failed: %s", e)
+
+
+def _bench_onnx_int8(model, dummy_input, dev, warmup, num_runs, results):
+    try:
+        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend, HAS_ONNX, HAS_ORT
+        if not (HAS_ONNX and HAS_ORT):
+            logger.warning("ONNX INT8 benchmark skipped: onnx/onnxruntime not installed")
+            return
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            onnx_path = Path(tmpdir) / "model_int8.onnx"
+            from lerobot_edge.core.configs import EdgeOnnxInt8Config
+            export_policy_to_onnx(model, EdgeOnnxInt8Config(device=str(dev)), onnx_path)
+            ort_backend = OnnxRuntimeBackend(onnx_path, device=dev)
+            results["onnx_int8"] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
+    except Exception as e:
+        logger.warning("ONNX INT8 benchmark failed: %s", e)
 
 
 def _bench_backend(backend, dummy_input, warmup, num_runs):
@@ -142,17 +170,14 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--num-runs", type=int, default=100)
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--onnx", action="store_true", help="Enable ONNX Runtime FP32 benchmark")
+    parser.add_argument("--onnx-int8", action="store_true", help="Enable ONNX Runtime INT8 benchmark")
     args = parser.parse_args()
 
     if args.checkpoint:
         logger.info("Loading real checkpoint: %s (type=%s)", args.checkpoint, args.policy_type)
         try:
-            from lerobot.policies.factory import make_policy, make_policy_config
-            config = make_policy_config(args.policy_type)
-            config.pretrained_path = args.checkpoint
-            config.device = args.device
-            model = make_policy(config)
-            model.eval()
+            model = load_policy_from_checkpoint(args.checkpoint, args.policy_type, args.device)
             dummy_input = build_dummy_input(model, torch.device(args.device))
         except Exception as e:
             logger.warning("Could not load checkpoint (missing dependencies). Falling back to simple model.")
@@ -161,7 +186,7 @@ def main() -> None:
     else:
         model, dummy_input = _simple_model()
 
-    results = compare_all_backends(model, dummy_input, warmup=args.warmup, num_runs=args.num_runs, device=args.device)
+    results = compare_all_backends(model, dummy_input, warmup=args.warmup, num_runs=args.num_runs, device=args.device, enable_onnx=args.onnx, enable_onnx_int8=args.onnx_int8)
     results["checkpoint"] = args.checkpoint or "simple_model"
     results["policy_type"] = args.policy_type if args.checkpoint else None
     print_comparison(results)
