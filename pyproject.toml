@@ -43,6 +43,9 @@ tensorrt = [
     "tensorrt>=10.0.0",
     "polygraphy>=0.49.0",
 ]
+wandb = [
+    "wandb>=0.15.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -51,7 +54,7 @@ dev = [
     "mypy>=1.0",
 ]
 all = [
-    "lerobot-edge[onnx,quantize,dev]",
+    "lerobot-edge[onnx,quantize,wandb,dev]",
 ]
 
 [project.scripts]

@@ -1,0 +1,28 @@
+[
+  {
+    "event": "init",
+    "name": null,
+    "config": {}
+  },
+  {
+    "event": "table",
+    "columns": [
+      "variant",
+      "compression_ratio",
+      "memory_savings_pct",
+      "quality_degradation_pct",
+      "cosine_similarity",
+      "speedup_ratio"
+    ],
+    "data": [
+      {
+        "variant": "fp32",
+        "compression_ratio": 1.0
+      },
+      {
+        "variant": "int8",
+        "compression_ratio": 2.0
+      }
+    ]
+  }
+]
