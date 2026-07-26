@@ -12,10 +12,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from lerobot_edge.core.base import IdentityBackend
 from lerobot_edge.compression.quantize import QuantizedBackend
+from lerobot_edge.core.base import IdentityBackend
 from lerobot_edge.core.configs import EdgeQuantInt8Config
-from lerobot_edge.core.utils import build_dummy_input, load_policy_from_checkpoint, measure_model_memory
+from lerobot_edge.core.utils import (
+    build_dummy_input,
+    load_policy_from_checkpoint,
+    measure_model_memory,
+)
 from lerobot_edge.evaluation.gate import QualityGate
 
 logger = logging.getLogger(__name__)
@@ -87,22 +91,51 @@ def compare_all_backends(
 
     if "onnx_fp32" in backends:
         from lerobot_edge.core.configs import EdgeOnnxFp32Config
-        _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, "onnx_fp32", EdgeOnnxFp32Config, "model.onnx")
+
+        _bench_onnx(
+            model,
+            dummy_input,
+            dev,
+            warmup,
+            num_runs,
+            results,
+            "onnx_fp32",
+            EdgeOnnxFp32Config,
+            "model.onnx",
+        )
 
     if "onnx_int8" in backends:
         from lerobot_edge.core.configs import EdgeOnnxInt8Config
-        _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, "onnx_int8", EdgeOnnxInt8Config, "model_int8.onnx")
+
+        _bench_onnx(
+            model,
+            dummy_input,
+            dev,
+            warmup,
+            num_runs,
+            results,
+            "onnx_int8",
+            EdgeOnnxInt8Config,
+            "model_int8.onnx",
+        )
 
     return results
 
 
 def _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, key, config_cls, filename):
     try:
-        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend, HAS_ONNX, HAS_ORT
+        from lerobot_edge.export.onnx import (
+            HAS_ONNX,
+            HAS_ORT,
+            OnnxRuntimeBackend,
+            export_policy_to_onnx,
+        )
+
         if not (HAS_ONNX and HAS_ORT):
             logger.warning("ONNX benchmark skipped (%s): onnx/onnxruntime not installed", key)
             return
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             onnx_path = Path(tmpdir) / filename
             export_policy_to_onnx(model, config_cls(device=str(dev)), onnx_path)
@@ -110,7 +143,6 @@ def _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, key, config_
             results[key] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
     except (ImportError, FileNotFoundError, RuntimeError) as e:
         logger.warning("ONNX benchmark failed (%s): %s", key, e)
-
 
 
 def _bench_backend(backend, dummy_input, warmup, num_runs):
@@ -147,13 +179,14 @@ def print_comparison(results: dict[str, Any]) -> None:
     print("-" * 80)
 
     backend_results = {
-        k: v for k, v in results.items()
-        if isinstance(v, dict) and "latency_mean_ms" in v
+        k: v for k, v in results.items() if isinstance(v, dict) and "latency_mean_ms" in v
     }
     for name, r in backend_results.items():
         mem = r.get("memory", {})
         mem_str = f" ({mem.get('total_mb', 0):.2f} MB)" if mem else ""
-        print(f"{name + mem_str:<20} {r['latency_mean_ms']:>8.2f}    {r['latency_p50_ms']:>8.2f}    {r['latency_p95_ms']:>8.2f}    {r['throughput_fps']:>8.1f}")
+        print(
+            f"{name + mem_str:<20} {r['latency_mean_ms']:>8.2f}    {r['latency_p50_ms']:>8.2f}    {r['latency_p95_ms']:>8.2f}    {r['throughput_fps']:>8.1f}"
+        )
     print("=" * 80)
 
     if any(k in backend_results for k in ["dynamic_int8", "onnx_int8"]):
@@ -163,18 +196,30 @@ def print_comparison(results: dict[str, Any]) -> None:
 
 def main() -> None:
     import argparse
+
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(description="Compare backend performance")
-    parser.add_argument("--checkpoint", type=str, default=None, help="HuggingFace Hub model ID or local path")
-    parser.add_argument("--policy-type", type=str, default="smolvla", help="Policy type for loading (default: smolvla)")
+    parser.add_argument(
+        "--checkpoint", type=str, default=None, help="HuggingFace Hub model ID or local path"
+    )
+    parser.add_argument(
+        "--policy-type",
+        type=str,
+        default="smolvla",
+        help="Policy type for loading (default: smolvla)",
+    )
     parser.add_argument("--output", type=str, default="benchmark_results/comparison.json")
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--num-runs", type=int, default=100)
     parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--backends", nargs="+", default=None,
-                        choices=ALL_BACKENDS,
-                        help=f"Backends to benchmark (default: identity int8). Options: {', '.join(ALL_BACKENDS)}")
+    parser.add_argument(
+        "--backends",
+        nargs="+",
+        default=None,
+        choices=ALL_BACKENDS,
+        help=f"Backends to benchmark (default: identity int8). Options: {', '.join(ALL_BACKENDS)}",
+    )
     args = parser.parse_args()
 
     if args.checkpoint:
@@ -183,13 +228,22 @@ def main() -> None:
             model = load_policy_from_checkpoint(args.checkpoint, args.policy_type, args.device)
             dummy_input = build_dummy_input(model, torch.device(args.device))
         except Exception as e:
-            logger.warning("Could not load checkpoint (missing dependencies). Falling back to simple model.")
+            logger.warning(
+                "Could not load checkpoint (missing dependencies). Falling back to simple model."
+            )
             logger.debug("Load error: %s", e)
             model, dummy_input = _simple_model()
     else:
         model, dummy_input = _simple_model()
 
-    results = compare_all_backends(model, dummy_input, warmup=args.warmup, num_runs=args.num_runs, device=args.device, backends=args.backends)
+    results = compare_all_backends(
+        model,
+        dummy_input,
+        warmup=args.warmup,
+        num_runs=args.num_runs,
+        device=args.device,
+        backends=args.backends,
+    )
     results["checkpoint"] = args.checkpoint or "simple_model"
     results["policy_type"] = args.policy_type if args.checkpoint else None
     print_comparison(results)

@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import abc
 import copy
-import tempfile
 import logging
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import torch
 import torch.nn as nn
-
 from lerobot.policies.pretrained import PreTrainedPolicy
+
 from lerobot_edge.core.configs import (
     EdgeBaseConfig,
     EdgeOnnxFp32Config,
@@ -33,22 +33,18 @@ class DeploymentBackend(abc.ABC):
     """Abstract interface for a deployment backend."""
 
     @abc.abstractmethod
-    def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        ...
+    def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor: ...
 
     @abc.abstractmethod
-    def reset(self) -> None:
-        ...
+    def reset(self) -> None: ...
 
     @property
     @abc.abstractmethod
-    def device(self) -> torch.device:
-        ...
+    def device(self) -> torch.device: ...
 
     @property
     @abc.abstractmethod
-    def parameters(self) -> list[nn.Parameter]:
-        ...
+    def parameters(self) -> list[nn.Parameter]: ...
 
 
 class NativePyTorchBackend(DeploymentBackend):
@@ -99,9 +95,7 @@ class CompressedPolicy(PreTrainedPolicy):
         if backend is not None:
             self._backend = backend
         elif pretrained_name_or_path is not None:
-            self._backend = self._build_backend_from_checkpoint(
-                pretrained_name_or_path, config
-            )
+            self._backend = self._build_backend_from_checkpoint(pretrained_name_or_path, config)
         else:
             self._backend = _PlaceholderBackend(config.device or "cpu")
 
@@ -120,7 +114,10 @@ class CompressedPolicy(PreTrainedPolicy):
         logger.info("Loading policy from %s", source)
         try:
             from lerobot_edge.core.utils import load_policy_from_checkpoint
-            policy = load_policy_from_checkpoint(source, config.source_policy_type or "smolvla", str(device))
+
+            policy = load_policy_from_checkpoint(
+                source, config.source_policy_type or "smolvla", str(device)
+            )
         except Exception as e:
             logger.error("Failed to load policy from %s: %s", source, e)
             return _PlaceholderBackend(str(device))
@@ -128,20 +125,31 @@ class CompressedPolicy(PreTrainedPolicy):
         try:
             if isinstance(config, EdgeOnnxInt8Config):
                 from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
-                onnx_path = export_policy_to_onnx(policy, config, Path(tempfile.mkdtemp(prefix="lerobot_edge_onnx_")) / "model.onnx")
+
+                onnx_path = export_policy_to_onnx(
+                    policy,
+                    config,
+                    Path(tempfile.mkdtemp(prefix="lerobot_edge_onnx_")) / "model.onnx",
+                )
                 logger.info("Creating OnnxRuntimeBackend from %s", onnx_path)
                 return OnnxRuntimeBackend(str(onnx_path), device=device)
 
             if isinstance(config, EdgeOnnxFp32Config):
                 from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
+
                 export_config = copy.deepcopy(config)
                 export_config.quantize_dynamic = False
-                onnx_path = export_policy_to_onnx(policy, export_config, Path(tempfile.mkdtemp(prefix="lerobot_edge_onnx_")) / "model.onnx")
+                onnx_path = export_policy_to_onnx(
+                    policy,
+                    export_config,
+                    Path(tempfile.mkdtemp(prefix="lerobot_edge_onnx_")) / "model.onnx",
+                )
                 logger.info("Creating OnnxRuntimeBackend (FP32) from %s", onnx_path)
                 return OnnxRuntimeBackend(str(onnx_path), device=device)
 
             if config.quantize_dynamic:
                 from lerobot_edge.compression.quantize import QuantizedBackend
+
                 logger.info("Creating QuantizedBackend (dynamic INT8)")
                 return QuantizedBackend.from_policy(policy, config)
 

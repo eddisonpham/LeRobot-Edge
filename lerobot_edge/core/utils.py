@@ -6,7 +6,6 @@ import importlib
 import logging
 import math
 import subprocess
-from typing import Any
 
 import torch
 import torch.nn as nn
@@ -28,7 +27,9 @@ def get_git_commit_hash() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
@@ -60,6 +61,7 @@ def measure_peak_memory_mb() -> float:
     else:
         try:
             import resource
+
             usage = resource.getrusage(resource.RUSAGE_SELF)
             return usage.ru_maxrss / 1024
         except (ImportError, AttributeError):
@@ -74,9 +76,9 @@ def sigmoid_scalar(x: float) -> float:
 def build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torch.Tensor]:
     """Build dummy input batch from policy's expected features."""
     dummy_input = {}
-    if hasattr(policy, 'config') and hasattr(policy.config, 'input_features'):
+    if hasattr(policy, "config") and hasattr(policy.config, "input_features"):
         for name, feature in policy.config.input_features.items():
-            shape = list(feature.shape) if hasattr(feature, 'shape') else [1, 3, 224, 224]
+            shape = list(feature.shape) if hasattr(feature, "shape") else [1, 3, 224, 224]
             if len(shape) == 0:
                 shape = [1]
             elif len(shape) == 1 and shape[0] != 1:
@@ -102,13 +104,13 @@ def load_policy_from_checkpoint(
     Tries from_pretrained for known architectures first, then falls back
     to the factory method for other policy types.
     """
-    _KNOWN_ARCH = {
+    known_arch: dict[str, str] = {
         "smolvla": "lerobot.policies.smolvla.modeling_smolvla.SmolVLAPolicy",
     }
 
-    if policy_type in _KNOWN_ARCH:
+    if policy_type in known_arch:
         try:
-            mod_path, cls_name = _KNOWN_ARCH[policy_type].rsplit(".", 1)
+            mod_path, cls_name = known_arch[policy_type].rsplit(".", 1)
             mod = importlib.import_module(mod_path)
             cls = getattr(mod, cls_name)
             logger.info("Loading %s via from_pretrained(%s)", policy_type, checkpoint)
@@ -121,6 +123,7 @@ def load_policy_from_checkpoint(
 
     logger.info("Loading %s via factory for %s", policy_type, checkpoint)
     from lerobot.policies.factory import make_policy, make_policy_config
+
     config = make_policy_config(policy_type)
     config.pretrained_path = checkpoint
     config.device = device

@@ -7,7 +7,7 @@ artifacts, and benchmark results.
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -107,19 +107,25 @@ class ExperimentTracker:
                 artifact.description = description
             self._run.log_artifact(artifact)
         else:
-            self._local_log.append({
-                "event": "artifact",
-                "name": artifact_name,
-                "type": artifact_type,
-                "path": str(local_path),
-            })
+            self._local_log.append(
+                {
+                    "event": "artifact",
+                    "name": artifact_name,
+                    "type": artifact_type,
+                    "path": str(local_path),
+                }
+            )
 
     def log_benchmark_result(self, result: dict[str, Any]) -> None:
         """Log a benchmark result with standard metric names."""
         metrics = {}
         for key in [
-            "latency_mean_ms", "latency_p50_ms", "latency_p95_ms",
-            "throughput_fps", "peak_memory_mb", "param_memory_mb",
+            "latency_mean_ms",
+            "latency_p50_ms",
+            "latency_p95_ms",
+            "throughput_fps",
+            "peak_memory_mb",
+            "param_memory_mb",
         ]:
             if key in result:
                 metrics[f"bench/{key}"] = result[key]
@@ -134,8 +140,13 @@ class ExperimentTracker:
         """Log a quantization quality report."""
         metrics = {}
         for key in [
-            "compression_ratio", "memory_savings_pct", "quality_degradation_pct",
-            "cosine_similarity", "mse", "mae", "speedup_ratio",
+            "compression_ratio",
+            "memory_savings_pct",
+            "quality_degradation_pct",
+            "cosine_similarity",
+            "mse",
+            "mae",
+            "speedup_ratio",
         ]:
             if key in report:
                 metrics[f"quality/{key}"] = report[key]
@@ -156,8 +167,12 @@ class ExperimentTracker:
 
         if columns is None:
             columns = [
-                "variant", "compression_ratio", "memory_savings_pct",
-                "quality_degradation_pct", "cosine_similarity", "speedup_ratio",
+                "variant",
+                "compression_ratio",
+                "memory_savings_pct",
+                "quality_degradation_pct",
+                "cosine_similarity",
+                "speedup_ratio",
             ]
 
         if self._enabled and self._run is not None and HAS_WANDB:

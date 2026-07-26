@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import logging
 import time
-from pathlib import Path
 from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
-from lerobot_edge.core.base import DeploymentBackend, NativePyTorchBackend
+from lerobot_edge.core.base import NativePyTorchBackend
 from lerobot_edge.core.configs import EdgeBaseConfig
 
 logger = logging.getLogger(__name__)
@@ -43,7 +42,9 @@ class DistillationLoss(nn.Module):
         if student_logits is not None and teacher_logits is not None:
             student_log_soft = F.log_softmax(student_logits / self.temperature, dim=-1)
             teacher_soft = F.softmax(teacher_logits / self.temperature, dim=-1)
-            kl_loss = F.kl_div(student_log_soft, teacher_soft, reduction="batchmean") * (self.temperature ** 2)
+            kl_loss = F.kl_div(student_log_soft, teacher_soft, reduction="batchmean") * (
+                self.temperature**2
+            )
             return (1 - self.alpha) * mse_loss + self.alpha * kl_loss
         else:
             return mse_loss
@@ -92,7 +93,12 @@ def distill(
 
     logger.info(
         "Starting distillation: teacher=%s, student=%s, epochs=%d, lr=%.2e, temp=%.1f, alpha=%.2f",
-        type(teacher).__name__, type(student).__name__, epochs, lr, temp, a,
+        type(teacher).__name__,
+        type(student).__name__,
+        epochs,
+        lr,
+        temp,
+        a,
     )
 
     teacher = teacher.to(dev).eval()
@@ -143,7 +149,14 @@ def distill(
             metrics["val_loss"].append(val_loss)
 
         epoch_time = time.time() - epoch_start
-        logger.info("Epoch %d/%d: train_loss=%.4f, val_loss=%.4f, time=%.1fs", epoch + 1, epochs, avg_train_loss, val_loss, epoch_time)
+        logger.info(
+            "Epoch %d/%d: train_loss=%.4f, val_loss=%.4f, time=%.1fs",
+            epoch + 1,
+            epochs,
+            avg_train_loss,
+            val_loss,
+            epoch_time,
+        )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -179,7 +192,9 @@ def _validate(
 
     with torch.no_grad():
         for batch in dataloader:
-            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+            batch = {
+                k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()
+            }
 
             teacher_actions = teacher.select_action(batch)
             student_actions = student.select_action(batch)

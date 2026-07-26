@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -23,12 +22,14 @@ __all__ = [
 
 try:
     import onnxruntime as ort
+
     HAS_ORT = True
 except ImportError:
     HAS_ORT = False
 
 try:
     import onnx
+
     HAS_ONNX = True
 except ImportError:
     HAS_ONNX = False
@@ -144,7 +145,9 @@ class OnnxRuntimeBackend(DeploymentBackend):
         device: torch.device | None = None,
     ) -> None:
         if not HAS_ORT:
-            raise ImportError("onnxruntime is required. Install with: pip install lerobot-edge[onnx]")
+            raise ImportError(
+                "onnxruntime is required. Install with: pip install lerobot-edge[onnx]"
+            )
 
         self._model_path = Path(model_path)
         self._provider = provider
@@ -164,7 +167,9 @@ class OnnxRuntimeBackend(DeploymentBackend):
 
         logger.info(
             "ONNX Runtime session created: %d inputs, %d outputs, provider=%s",
-            len(self._input_names), len(self._output_names), provider,
+            len(self._input_names),
+            len(self._output_names),
+            provider,
         )
 
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:

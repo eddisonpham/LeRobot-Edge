@@ -12,11 +12,15 @@ from typing import Any
 
 import numpy as np
 import torch
-import torch.nn as nn
 
 from lerobot_edge.core.base import DeploymentBackend
 from lerobot_edge.core.configs import EdgeBaseConfig
-from lerobot_edge.core.utils import build_dummy_input, get_git_commit_hash, measure_model_memory, measure_peak_memory_mb
+from lerobot_edge.core.utils import (
+    build_dummy_input,
+    get_git_commit_hash,
+    measure_model_memory,
+    measure_peak_memory_mb,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +70,18 @@ def benchmark_backend(
     config: EdgeBaseConfig | None = None,
 ) -> BenchmarkResult:
     """Benchmark a deployment backend."""
-    logger.info("Benchmarking %s on %s: warmup=%d, runs=%d", backend_name, device_profile, warmup_runs, num_runs)
+    logger.info(
+        "Benchmarking %s on %s: warmup=%d, runs=%d",
+        backend_name,
+        device_profile,
+        warmup_runs,
+        num_runs,
+    )
 
     device = backend.device
-    dummy_input = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in dummy_input.items()}
+    dummy_input = {
+        k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in dummy_input.items()
+    }
 
     logger.debug("Running %d warmup iterations...", warmup_runs)
     for _ in range(warmup_runs):
@@ -83,7 +95,7 @@ def benchmark_backend(
         torch.cuda.synchronize()
 
     logger.debug("Running %d benchmark iterations...", num_runs)
-    for i in range(num_runs):
+    for _ in range(num_runs):
         start_time = time.perf_counter()
 
         with torch.no_grad():
@@ -108,7 +120,7 @@ def benchmark_backend(
 
     throughput = 1000.0 / latency_mean if latency_mean > 0 else 0.0
 
-    if hasattr(backend, '_policy') and hasattr(backend._policy, 'parameters'):
+    if hasattr(backend, "_policy") and hasattr(backend._policy, "parameters"):
         model_mem = measure_model_memory(backend._policy)
     else:
         model_mem = {"param_mb": 0.0, "buffer_mb": 0.0, "total_mb": 0.0, "num_parameters": 0}
@@ -133,7 +145,14 @@ def benchmark_backend(
         benchmark_runs=num_runs,
     )
 
-    logger.info("Benchmark complete: latency=%.2f+/- %.2f ms (p50=%.2f, p95=%.2f), throughput=%.1f fps", latency_mean, latency_std, latency_p50, latency_p95, throughput)
+    logger.info(
+        "Benchmark complete: latency=%.2f+/- %.2f ms (p50=%.2f, p95=%.2f), throughput=%.1f fps",
+        latency_mean,
+        latency_std,
+        latency_p50,
+        latency_p95,
+        throughput,
+    )
 
     return result
 
@@ -155,7 +174,11 @@ def benchmark_policy_variants(
     for name, backend in variants.items():
         logger.info("Benchmarking variant: %s", name)
         result = benchmark_backend(
-            backend, dummy_input, backend_name=name, device_profile=device_profile, **kwargs,
+            backend,
+            dummy_input,
+            backend_name=name,
+            device_profile=device_profile,
+            **kwargs,
         )
         results.append(result)
 
@@ -217,11 +240,19 @@ def compare_results(
             continue
 
         comparisons[r.backend_name] = {
-            "latency_ratio": r.latency_mean_ms / baseline.latency_mean_ms if baseline.latency_mean_ms > 0 else float('inf'),
+            "latency_ratio": r.latency_mean_ms / baseline.latency_mean_ms
+            if baseline.latency_mean_ms > 0
+            else float("inf"),
             "speedup": baseline.latency_mean_ms / r.latency_mean_ms if r.latency_mean_ms > 0 else 0,
-            "memory_ratio": r.peak_memory_mb / baseline.peak_memory_mb if baseline.peak_memory_mb > 0 else float('inf'),
-            "memory_savings": (1 - r.peak_memory_mb / baseline.peak_memory_mb) * 100 if baseline.peak_memory_mb > 0 else 0,
-            "throughput_ratio": r.throughput_fps / baseline.throughput_fps if baseline.throughput_fps > 0 else 0,
+            "memory_ratio": r.peak_memory_mb / baseline.peak_memory_mb
+            if baseline.peak_memory_mb > 0
+            else float("inf"),
+            "memory_savings": (1 - r.peak_memory_mb / baseline.peak_memory_mb) * 100
+            if baseline.peak_memory_mb > 0
+            else 0,
+            "throughput_ratio": r.throughput_fps / baseline.throughput_fps
+            if baseline.throughput_fps > 0
+            else 0,
         }
 
     return comparisons
@@ -232,10 +263,25 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="Benchmark lerobot_edge policy variants")
-    parser.add_argument("--checkpoint", type=str, required=True, help="Policy checkpoint path or HuggingFace Hub ID")
-    parser.add_argument("--variants", nargs="+", default=["edge_identity"], help="Variants to benchmark (default: edge_identity)")
-    parser.add_argument("--device-profile", type=str, default="laptop_cpu", choices=["laptop_cpu", "cloud_gpu", "edge"], help="Device profile (default: laptop_cpu)")
-    parser.add_argument("--output-dir", type=str, default="benchmark_results", help="Output directory for results")
+    parser.add_argument(
+        "--checkpoint", type=str, required=True, help="Policy checkpoint path or HuggingFace Hub ID"
+    )
+    parser.add_argument(
+        "--variants",
+        nargs="+",
+        default=["edge_identity"],
+        help="Variants to benchmark (default: edge_identity)",
+    )
+    parser.add_argument(
+        "--device-profile",
+        type=str,
+        default="laptop_cpu",
+        choices=["laptop_cpu", "cloud_gpu", "edge"],
+        help="Device profile (default: laptop_cpu)",
+    )
+    parser.add_argument(
+        "--output-dir", type=str, default="benchmark_results", help="Output directory for results"
+    )
     parser.add_argument("--warmup", type=int, default=10, help="Number of warmup runs")
     parser.add_argument("--num-runs", type=int, default=100, help="Number of benchmark runs")
     args = parser.parse_args()
@@ -246,15 +292,15 @@ def main() -> None:
     logger.info("Variants: %s", args.variants)
     logger.info("Device profile: %s", args.device_profile)
 
-    from lerobot_edge.core.base import IdentityBackend, NativePyTorchBackend
     from lerobot_edge.compression.quantize import QuantizedBackend
-    from lerobot_edge.core.utils import load_policy_from_checkpoint
+    from lerobot_edge.core.base import IdentityBackend, NativePyTorchBackend
     from lerobot_edge.core.configs import (
         EdgeIdentityConfig,
-        EdgeQuantInt8Config,
         EdgeOnnxFp32Config,
         EdgeOnnxInt8Config,
+        EdgeQuantInt8Config,
     )
+    from lerobot_edge.core.utils import load_policy_from_checkpoint
 
     device = torch.device(args.device_profile)
 
@@ -294,8 +340,12 @@ def main() -> None:
         return
 
     results = benchmark_policy_variants(
-        variants, dummy_input, device_profile=args.device_profile, output_dir=args.output_dir,
-        warmup_runs=args.warmup, num_runs=args.num_runs,
+        variants,
+        dummy_input,
+        device_profile=args.device_profile,
+        output_dir=args.output_dir,
+        warmup_runs=args.warmup,
+        num_runs=args.num_runs,
     )
 
     print("\n" + "=" * 80)
@@ -304,7 +354,9 @@ def main() -> None:
     print(f"{'Backend':<25} {'Latency (ms)':<20} {'Throughput (fps)':<20} {'Memory (MB)':<15}")
     print("-" * 80)
     for r in results:
-        print(f"{r.backend_name:<25} {r.latency_mean_ms:>8.2f} +/- {r.latency_std_ms:<6.2f} {r.throughput_fps:>12.1f} {r.peak_memory_mb:>10.1f}")
+        print(
+            f"{r.backend_name:<25} {r.latency_mean_ms:>8.2f} +/- {r.latency_std_ms:<6.2f} {r.throughput_fps:>12.1f} {r.peak_memory_mb:>10.1f}"
+        )
     print("=" * 80)
     print(f"\nResults saved to {args.output_dir}/")
 

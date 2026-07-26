@@ -117,7 +117,7 @@ def measure_output_divergence(
     all_rel_err = []
     total_samples = 0
 
-    for orig, quant in zip(original_outputs, quantized_outputs):
+    for orig, quant in zip(original_outputs, quantized_outputs, strict=False):
         orig_f = orig.float().detach()
         quant_f = quant.float().detach()
 

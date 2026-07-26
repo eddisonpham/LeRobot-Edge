@@ -28,6 +28,7 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Project-specific
 benchmark_results/

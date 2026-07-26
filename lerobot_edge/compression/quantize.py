@@ -5,11 +5,10 @@ from __future__ import annotations
 import copy
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from lerobot_edge.core.base import NativePyTorchBackend
 from lerobot_edge.core.configs import EdgeBaseConfig
@@ -25,27 +24,30 @@ __all__ = [
 ]
 
 try:
-    from torchao.quantization import quantize_ as torchao_quantize
+    from torchao.core.config import AOBaseConfig
+    from torchao.dtypes import to_affine_quantized_intx_static
     from torchao.quantization import Int8DynamicActivationInt8WeightConfig
+    from torchao.quantization import quantize_ as torchao_quantize
     from torchao.quantization.granularity import PerAxis, PerTensor
     from torchao.quantization.observer import AffineQuantizedMinMaxObserver
-    from torchao.quantization.quant_primitives import MappingType
     from torchao.quantization.quant_api import _replace_with_custom_fn_if_matches_filter
-    from torchao.core.config import AOBaseConfig
+    from torchao.quantization.quant_primitives import MappingType
     from torchao.quantization.transform_module import register_quantize_module_handler
-    from torchao.dtypes import to_affine_quantized_intx_static
+
     HAS_TORCHAO = True
 except ImportError:
     HAS_TORCHAO = False
 
 try:
     import bitsandbytes as bnb
+
     HAS_BNB = True
 except ImportError:
     HAS_BNB = False
 
 
 if HAS_TORCHAO:
+
     class ObservedLinear(nn.Module):
         def __init__(
             self,
@@ -62,13 +64,15 @@ if HAS_TORCHAO:
             self.act_obs = act_obs
             self.weight_obs = weight_obs
 
-        def forward(self, input: torch.Tensor) -> torch.Tensor:
-            observed_input = self.act_obs(input)
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            observed_input = self.act_obs(x)
             observed_weight = self.weight_obs(self.linear.weight)
             return F.linear(observed_input, observed_weight, self.linear.bias)
 
         @classmethod
-        def from_float(cls, float_linear: nn.Linear, act_obs: nn.Module, weight_obs: nn.Module) -> ObservedLinear:
+        def from_float(
+            cls, float_linear: nn.Linear, act_obs: nn.Module, weight_obs: nn.Module
+        ) -> ObservedLinear:
             observed_linear = cls(
                 float_linear.in_features,
                 float_linear.out_features,
@@ -105,10 +109,10 @@ if HAS_TORCHAO:
                 weight, weight_scale, weight_zero_point, block_size, self.target_dtype
             )
 
-        def forward(self, input: torch.Tensor) -> torch.Tensor:
-            block_size = (1,) + input.shape[1:]
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            block_size = (1,) + x.shape[1:]
             qinput = to_affine_quantized_intx_static(
-                input,
+                x,
                 self.act_scale,
                 self.act_zero_point,
                 block_size,
@@ -117,7 +121,9 @@ if HAS_TORCHAO:
             return F.linear(qinput, self.qweight, self.bias)
 
         @classmethod
-        def from_observed(cls, observed_linear: ObservedLinear, target_dtype: torch.dtype) -> QuantizedLinear:
+        def from_observed(
+            cls, observed_linear: ObservedLinear, target_dtype: torch.dtype
+        ) -> QuantizedLinear:
             return cls(
                 observed_linear.linear.in_features,
                 observed_linear.linear.out_features,
@@ -162,7 +168,9 @@ def dynamic_int8_quantize(model: nn.Module) -> nn.Module:
             logger.warning("Dynamic INT8 quantization failed: %s. Returning original.", e)
             return model
 
-    raise ImportError("torchao is required for dynamic INT8 quantization. Install with: pip install torchao")
+    raise ImportError(
+        "torchao is required for dynamic INT8 quantization. Install with: pip install torchao"
+    )
 
 
 def static_int8_quantize(
@@ -207,19 +215,25 @@ def static_int8_quantize(
                 for _ in range(num_calibration_steps):
                     model(*tensors)
 
-            is_observed = lambda m, fqn: isinstance(m, ObservedLinear)
-            torchao_quantize(model, StaticQuantConfig(torch.uint8), is_observed)
+            def _is_observed(m: nn.Module, _fqn: str) -> bool:
+                return isinstance(m, ObservedLinear)
+
+            torchao_quantize(model, StaticQuantConfig(torch.uint8), _is_observed)
             logger.info("Static INT8 quantization applied successfully.")
             return model
         except Exception as e:
             raise RuntimeError(f"torchao static quantization failed: {e}") from e
 
-    raise ImportError("torchao is required for static INT8 quantization. Install with: pip install torchao")
+    raise ImportError(
+        "torchao is required for static INT8 quantization. Install with: pip install torchao"
+    )
 
 
 def quantize_4bit(model: nn.Module) -> nn.Module:
     if not HAS_BNB:
-        raise ImportError("bitsandbytes is required for 4-bit quantization. Install with: pip install lerobot-edge[quantize]")
+        raise ImportError(
+            "bitsandbytes is required for 4-bit quantization. Install with: pip install lerobot-edge[quantize]"
+        )
 
     logger.info("Applying 4-bit quantization via bitsandbytes...")
 
@@ -278,11 +292,27 @@ def main() -> None:
     import json
     from pathlib import Path
 
-    parser = argparse.ArgumentParser(description="Quantize a LeRobot policy checkpoint for edge deployment")
-    parser.add_argument("--source", type=str, required=True, help="Source policy checkpoint path or HuggingFace Hub ID")
-    parser.add_argument("--output", type=str, required=True, help="Output directory for the quantized checkpoint")
-    parser.add_argument("--method", choices=["dynamic_int8", "static_int8", "4bit"], default="dynamic_int8", help="Quantization method (default: dynamic_int8)")
-    parser.add_argument("--device", type=str, default="cpu", help="Device to run quantization on (default: cpu)")
+    parser = argparse.ArgumentParser(
+        description="Quantize a LeRobot policy checkpoint for edge deployment"
+    )
+    parser.add_argument(
+        "--source",
+        type=str,
+        required=True,
+        help="Source policy checkpoint path or HuggingFace Hub ID",
+    )
+    parser.add_argument(
+        "--output", type=str, required=True, help="Output directory for the quantized checkpoint"
+    )
+    parser.add_argument(
+        "--method",
+        choices=["dynamic_int8", "static_int8", "4bit"],
+        default="dynamic_int8",
+        help="Quantization method (default: dynamic_int8)",
+    )
+    parser.add_argument(
+        "--device", type=str, default="cpu", help="Device to run quantization on (default: cpu)"
+    )
     args = parser.parse_args()
 
     logger.info("Loading policy from %s...", args.source)
@@ -296,7 +326,11 @@ def main() -> None:
         return
 
     original_mem = measure_model_memory(policy)
-    logger.info("Original model: %.1f MB, %d parameters", original_mem["total_mb"], original_mem["num_parameters"])
+    logger.info(
+        "Original model: %.1f MB, %d parameters",
+        original_mem["total_mb"],
+        original_mem["num_parameters"],
+    )
 
     logger.info("Applying %s quantization...", args.method)
     if args.method == "dynamic_int8":
@@ -313,7 +347,12 @@ def main() -> None:
 
     quantized_mem = measure_model_memory(quantized)
     reduction = (1 - quantized_mem["total_mb"] / original_mem["total_mb"]) * 100
-    logger.info("Quantized model: %.1f MB, %d parameters (%.1f%% reduction)", quantized_mem["total_mb"], quantized_mem["num_parameters"], reduction)
+    logger.info(
+        "Quantized model: %.1f MB, %d parameters (%.1f%% reduction)",
+        quantized_mem["total_mb"],
+        quantized_mem["num_parameters"],
+        reduction,
+    )
 
     output_path = Path(args.output)
     output_path.mkdir(parents=True, exist_ok=True)

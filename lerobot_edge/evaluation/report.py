@@ -22,8 +22,10 @@ __all__ = [
 
 try:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     HAS_MPL = True
 except ImportError:
     HAS_MPL = False
@@ -105,19 +107,27 @@ def plot_pareto_frontier(
 
     backend_names = list(set(r.backend_name for r in plotted))
     colors = plt.cm.Set2(np.linspace(0, 1, len(backend_names)))
-    color_map = dict(zip(backend_names, colors))
+    color_map = dict(zip(backend_names, colors, strict=False))
 
     for r in plotted:
         x = r.latency_mean_ms if x_metric == "latency" else r.peak_memory_mb
         color = color_map[r.backend_name]
         ax.scatter(x, r.success_rate, c=[color], s=100, alpha=0.8, edgecolors="black")
-        ax.annotate(r.backend_name, (x, r.success_rate), textcoords="offset points", xytext=(5, 5), fontsize=8)
+        ax.annotate(
+            r.backend_name,
+            (x, r.success_rate),
+            textcoords="offset points",
+            xytext=(5, 5),
+            fontsize=8,
+        )
 
     if len(plotted) > 1:
-        points = np.array([
-            (r.latency_mean_ms if x_metric == "latency" else r.peak_memory_mb, r.success_rate)
-            for r in plotted
-        ])
+        points = np.array(
+            [
+                (r.latency_mean_ms if x_metric == "latency" else r.peak_memory_mb, r.success_rate)
+                for r in plotted
+            ]
+        )
         points = points[points[:, 0].argsort()]
 
         frontier = []
@@ -164,11 +174,17 @@ def generate_report(
     table = generate_results_table(results)
 
     latency_plot = plot_pareto_frontier(
-        results, output_path=output_dir / "pareto_latency.png", x_metric="latency", title="Latency vs Task Success Rate",
+        results,
+        output_path=output_dir / "pareto_latency.png",
+        x_metric="latency",
+        title="Latency vs Task Success Rate",
     )
 
     memory_plot = plot_pareto_frontier(
-        results, output_path=output_dir / "pareto_memory.png", x_metric="memory", title="Memory vs Task Success Rate",
+        results,
+        output_path=output_dir / "pareto_memory.png",
+        x_metric="memory",
+        title="Memory vs Task Success Rate",
     )
 
     report_md = f"""# lerobot_edge Benchmark Report
@@ -189,14 +205,14 @@ Generated from {len(results)} benchmark results.
 
 ## Methodology
 
-- **Warmup runs**: {results[0].warmup_runs if results else 'N/A'}
-- **Benchmark runs**: {results[0].benchmark_runs if results else 'N/A'}
-- **Git commit**: {results[0].git_commit if results else 'N/A'}
-- **Timestamp**: {results[0].timestamp if results else 'N/A'}
+- **Warmup runs**: {results[0].warmup_runs if results else "N/A"}
+- **Benchmark runs**: {results[0].benchmark_runs if results else "N/A"}
+- **Git commit**: {results[0].git_commit if results else "N/A"}
+- **Timestamp**: {results[0].timestamp if results else "N/A"}
 
 ## Notes
 
-- All measurements taken on {results[0].device_profile if results else 'unknown device'}
+- All measurements taken on {results[0].device_profile if results else "unknown device"}
 - Success rates measured on PushT benchmark (unless otherwise noted)
 - Memory includes peak GPU/CPU memory during inference
 """
@@ -219,9 +235,15 @@ def main() -> None:
     """CLI entry point for ``lerobot-edge-report``."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Generate benchmark report from lerobot_edge results")
-    parser.add_argument("--results-dir", type=str, required=True, help="Directory containing benchmark results")
-    parser.add_argument("--output-dir", type=str, default="docs", help="Output directory for the report")
+    parser = argparse.ArgumentParser(
+        description="Generate benchmark report from lerobot_edge results"
+    )
+    parser.add_argument(
+        "--results-dir", type=str, required=True, help="Directory containing benchmark results"
+    )
+    parser.add_argument(
+        "--output-dir", type=str, default="docs", help="Output directory for the report"
+    )
     args = parser.parse_args()
 
     result = generate_report(args.results_dir, args.output_dir)

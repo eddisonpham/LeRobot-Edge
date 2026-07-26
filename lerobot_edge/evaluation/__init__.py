@@ -1,12 +1,5 @@
 """Benchmarking, evaluation metrics, and reporting."""
 
-from lerobot_edge.evaluation.metrics import (
-    OutputDivergence,
-    QuantizationQualityReport,
-    bootstrap_confidence_interval,
-    compare_backends,
-    measure_output_divergence,
-)
 from lerobot_edge.evaluation.benchmark import (
     BenchmarkResult,
     benchmark_backend,
@@ -15,6 +8,13 @@ from lerobot_edge.evaluation.benchmark import (
     load_results,
 )
 from lerobot_edge.evaluation.gate import QualityGate, QualityGateResult
+from lerobot_edge.evaluation.metrics import (
+    OutputDivergence,
+    QuantizationQualityReport,
+    bootstrap_confidence_interval,
+    compare_backends,
+    measure_output_divergence,
+)
 from lerobot_edge.evaluation.report import (
     aggregate_results,
     generate_report,

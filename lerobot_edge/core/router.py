@@ -7,7 +7,6 @@ import math
 from typing import Any
 
 import torch
-import torch.nn as nn
 
 from lerobot_edge.core.base import DeploymentBackend
 
@@ -50,7 +49,11 @@ class ConfidenceRouter:
                 edge_actions = cloud_actions
                 escalated = True
                 self._escalations += 1
-                logger.debug("Escalated to cloud (confidence=%.3f < threshold=%.3f)", confidence, self._threshold)
+                logger.debug(
+                    "Escalated to cloud (confidence=%.3f < threshold=%.3f)",
+                    confidence,
+                    self._threshold,
+                )
 
         info = {
             "confidence": confidence,

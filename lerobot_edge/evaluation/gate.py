@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from lerobot_edge.evaluation.metrics import measure_output_divergence
-
 import torch
 import torch.nn as nn
+
+from lerobot_edge.evaluation.metrics import measure_output_divergence
 
 logger = logging.getLogger(__name__)
 
@@ -70,13 +70,9 @@ class QualityGate:
 
         parts = []
         if not cos_ok:
-            parts.append(
-                f"cosine similarity {div.cosine_similarity:.6f} < {self.min_cosine}"
-            )
+            parts.append(f"cosine similarity {div.cosine_similarity:.6f} < {self.min_cosine}")
         if not mse_ok:
-            parts.append(
-                f"MSE {div.mse:.8f} > {self.max_mse}"
-            )
+            parts.append(f"MSE {div.mse:.8f} > {self.max_mse}")
 
         if passed:
             msg = f"PASSED (cos={div.cosine_similarity:.6f}, mse={div.mse:.8f})"

@@ -11,7 +11,6 @@ import torch
 import torch.nn as nn
 
 from lerobot_edge.core.base import DeploymentBackend
-from lerobot_edge.core.configs import EdgeBaseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +23,14 @@ __all__ = [
 
 try:
     import tensorrt as trt
+
     HAS_TENSORRT = True
 except ImportError:
     HAS_TENSORRT = False
 
 try:
-    import onnxruntime as ort
+    import onnxruntime as ort  # noqa: F401
+
     HAS_ORT = True
 except ImportError:
     HAS_ORT = False
@@ -98,17 +99,22 @@ class TensorRTBackend(DeploymentBackend):
         device: torch.device | None = None,
     ) -> None:
         if not HAS_TENSORRT:
-            raise ImportError("TensorRT is required. Install with: pip install lerobot-edge[tensorrt]")
+            raise ImportError(
+                "TensorRT is required. Install with: pip install lerobot-edge[tensorrt]"
+            )
 
         self._engine_path = Path(engine_path)
         self._device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         try:
-            import pycuda.driver as cuda
             import pycuda.autoinit  # noqa: F401
+            import pycuda.driver as cuda
+
             self._cuda = cuda
-        except ImportError:
-            raise ImportError("pycuda is required for TensorRT inference. Install with: pip install pycuda")
+        except ImportError as err:
+            raise ImportError(
+                "pycuda is required for TensorRT inference. Install with: pip install pycuda"
+            ) from err
 
         trt_logger = trt.Logger(trt.Logger.WARNING)
         runtime = trt.Runtime(trt_logger)
@@ -163,7 +169,9 @@ class TensorRTBackend(DeploymentBackend):
                     dtype_np = trt.nptype(self._engine.get_tensor_dtype(name))
                     shape = tuple(self._context.get_tensor_shape(name))
                     host_data = np.empty(shape, dtype=dtype_np)
-                    cuda.memcpy_dtoh_async(host_data, self._context.get_tensor_address(name), self._stream)
+                    cuda.memcpy_dtoh_async(
+                        host_data, self._context.get_tensor_address(name), self._stream
+                    )
                     results[name] = host_data
 
             self._stream.synchronize()
