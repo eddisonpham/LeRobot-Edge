@@ -95,7 +95,7 @@ SmolVLA (864 MB) on Intel i7 CPU, 10 runs, 3 warmup:
 | Dynamic INT8 | 5.78 | 173.1 | cos=0.9878 |
 
 > INT8 adds dispatch overhead on CPU. Real speedup appears on GPU or with `torch.compile`.
-> For CPU-only deployments, set `min_cosine_similarity=0.98` in the quality gate.
+> Quality gate defaults to `min_cosine_similarity=0.98`. For strict GPU deployments, set it to `0.999`.
 
 ## Makefile
 
