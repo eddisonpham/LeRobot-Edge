@@ -42,6 +42,21 @@ class TestCoreSubpackage:
         assert callable(measure_peak_memory_mb)
         assert callable(sigmoid_scalar)
 
+    def test_sigmoid_scalar_works(self):
+        from lerobot_edge.core.utils import sigmoid_scalar
+        import math
+        assert sigmoid_scalar(0.0) == 0.5
+        assert sigmoid_scalar(100.0) == pytest.approx(1.0, abs=1e-10)
+        assert sigmoid_scalar(-100.0) == pytest.approx(0.0, abs=1e-10)
+
+    def test_measure_model_memory_works(self):
+        import torch.nn as nn
+        from lerobot_edge.core.utils import measure_model_memory
+        model = nn.Linear(10, 2)
+        result = measure_model_memory(model)
+        assert result["num_parameters"] == 22
+        assert result["total_mb"] > 0
+
     def test_core_init_exports(self):
         from lerobot_edge.core import (
             DeploymentBackend,
@@ -148,6 +163,13 @@ class TestMonitoringSubpackage:
         )
         assert ExperimentTracker is not None
         assert TrackConfig is not None
+
+    def test_tracker_functional(self):
+        from lerobot_edge.tracking import ExperimentTracker
+        tracker = ExperimentTracker(enabled=False)
+        assert not tracker.is_active
+        tracker.init_run()
+        assert not tracker.is_active
 
     def test_monitoring_init_exports(self):
         from lerobot_edge.tracking import ExperimentTracker, TrackConfig
