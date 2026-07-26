@@ -22,6 +22,27 @@ logger = logging.getLogger(__name__)
 __all__ = ["compare_all_backends", "print_comparison"]
 
 
+def _simple_model():
+    class SimpleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layer1 = nn.Linear(7, 64)
+            self.layer2 = nn.Linear(64, 32)
+            self.layer3 = nn.Linear(32, 2)
+            self.relu = nn.ReLU()
+        def forward(self, x):
+            return self.layer3(self.relu(self.layer2(self.relu(self.layer1(x)))))
+        def select_action(self, batch):
+            for key, val in batch.items():
+                if isinstance(val, torch.Tensor) and val.dim() == 2:
+                    return self.forward(val)
+            return self.forward(list(batch.values())[0])
+        def reset(self):
+            pass
+
+    return SimpleModel(), {"observation.state": torch.randn(1, 7)}
+
+
 def compare_all_backends(
     model: nn.Module,
     dummy_input: dict[str, torch.Tensor],
@@ -93,6 +114,8 @@ def print_comparison(results: dict[str, Any]) -> None:
     print(f"{'Backend':<20} {'Mean (ms)':<12} {'P50 (ms)':<12} {'P95 (ms)':<12} {'FPS':<10}")
     print("-" * 80)
     for name, r in results.items():
+        if not isinstance(r, dict) or "latency_mean_ms" not in r:
+            continue
         mem = r.get("memory", {})
         mem_str = f" ({mem.get('total_mb', 0):.1f} MB)" if mem else ""
         print(f"{name + mem_str:<20} {r['latency_mean_ms']:>8.2f}    {r['latency_p50_ms']:>8.2f}    {r['latency_p95_ms']:>8.2f}    {r['throughput_fps']:>8.1f}")
@@ -104,33 +127,35 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(description="Compare backend performance")
+    parser.add_argument("--checkpoint", type=str, default=None, help="HuggingFace Hub model ID or local path")
     parser.add_argument("--output", type=str, default="benchmark_results/comparison.json")
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--num-runs", type=int, default=100)
     parser.add_argument("--device", type=str, default="cpu")
     args = parser.parse_args()
 
-    class SimpleModel(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.layer1 = nn.Linear(7, 64)
-            self.layer2 = nn.Linear(64, 32)
-            self.layer3 = nn.Linear(32, 2)
-            self.relu = nn.ReLU()
-        def forward(self, x):
-            return self.layer3(self.relu(self.layer2(self.relu(self.layer1(x)))))
-        def select_action(self, batch):
-            for key, val in batch.items():
-                if isinstance(val, torch.Tensor) and val.dim() == 2:
-                    return self.forward(val)
-            return self.forward(list(batch.values())[0])
-        def reset(self):
-            pass
-
-    model = SimpleModel()
-    dummy_input = {"observation.state": torch.randn(1, 7)}
+    if args.checkpoint:
+        logger.info("Loading real checkpoint: %s", args.checkpoint)
+        try:
+            from lerobot.policies.factory import make_policy, make_policy_config
+            config = make_policy_config("smolvla")
+            config.pretrained_path = args.checkpoint
+            config.device = args.device
+            model = make_policy(config)
+            model.eval()
+            dummy_input = {
+                "observation.images.front": torch.randn(1, 3, 224, 224),
+                "observation.state": torch.randn(1, 2),
+            }
+        except Exception as e:
+            logger.error("Failed to load checkpoint: %s", e)
+            logger.info("Falling back to simple model")
+            model, dummy_input = _simple_model()
+    else:
+        model, dummy_input = _simple_model()
 
     results = compare_all_backends(model, dummy_input, warmup=args.warmup, num_runs=args.num_runs, device=args.device)
+    results["checkpoint"] = args.checkpoint or "simple_model"
     print_comparison(results)
 
     output_path = Path(args.output)
