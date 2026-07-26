@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "lerobot-edge"
+version = "0.1.0"
+description = "Policy compression and edge deployment plugin for HuggingFace LeRobot"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "lerobot-edge contributors"}
+]
+keywords = ["robotics", "edge-deployment", "quantization", "onnx", "vla", "lerobot"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "lerobot>=0.6.0,<0.7",
+    "torch>=2.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+onnx = [
+    "onnx>=1.14.0",
+    "onnxruntime>=1.16.0",
+]
+quantize = [
+    "bitsandbytes>=0.41.0",
+]
+tensorrt = [
+    "tensorrt>=10.0.0",
+    "polygraphy>=0.49.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+all = [
+    "lerobot-edge[onnx,quantize,dev]",
+]
+
+[project.scripts]
+lerobot-edge-benchmark = "lerobot_edge.benchmark:main"
+lerobot-edge-quantize = "lerobot_edge.quantize:main"
+lerobot-edge-report = "lerobot_edge.report:main"
+
+[project.urls]
+Homepage = "https://github.com/lerobot-edge/lerobot-edge"
+Documentation = "https://lerobot-edge.github.io/lerobot-edge"
+Repository = "https://github.com/lerobot-edge/lerobot-edge"
+
+[tool.setuptools.packages.find]
+include = ["lerobot_edge*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: marks tests that require GPU",
+    "integration: marks integration tests",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

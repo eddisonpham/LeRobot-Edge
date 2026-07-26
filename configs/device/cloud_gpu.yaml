@@ -1,0 +1,25 @@
+# Cloud GPU device profile
+# Use for training and benchmarking with GPU acceleration
+
+device: cuda
+use_amp: true
+
+# Benchmark settings (more runs for accuracy)
+benchmark_warmup: 20
+benchmark_num_runs: 500
+
+# Quantization settings
+quantize_dynamic: true
+quantize_static: true
+quantize_bits: 8
+
+# ONNX settings
+onnx_opset: 17
+
+# Evaluation settings
+eval_n_episodes: 50
+eval_batch_size: 8
+
+# Distillation settings (GPU-accelerated)
+distill_epochs: 20
+distill_lr: 1e-4

@@ -1,0 +1,21 @@
+# Laptop CPU device profile
+# Use for development and testing on CPU-only machines
+
+device: cpu
+use_amp: false
+
+# Benchmark settings
+benchmark_warmup: 10
+benchmark_num_runs: 100
+
+# Quantization settings (CPU-friendly)
+quantize_dynamic: true
+quantize_static: false
+quantize_bits: 8
+
+# ONNX settings
+onnx_opset: 17
+
+# Evaluation settings
+eval_n_episodes: 10
+eval_batch_size: 1
