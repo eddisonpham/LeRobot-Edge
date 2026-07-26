@@ -38,3 +38,6 @@ benchmark_results/
 *.pth
 factory_src.py
 config_src.py
+
+# Planning documents (not part of the package)
+vla-edge-plan/
