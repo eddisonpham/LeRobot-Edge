@@ -240,3 +240,22 @@ class TestExperimentTrackerWandb:
                 mon_mod.HAS_WANDB = old_has_wandb
                 if old_wandb_ref is not None:
                     mon_mod.wandb = old_wandb_ref
+
+
+class TestFinishedState:
+    def test_finish_then_log_warns(self, tmp_path):
+        config = TrackConfig(log_dir=str(tmp_path))
+        tracker = ExperimentTracker(config=config, enabled=False)
+        tracker.init_run()
+        tracker.finish_run()
+        assert tracker._finished
+
+    def test_init_resets_finished(self, tmp_path):
+        config = TrackConfig(log_dir=str(tmp_path))
+        tracker = ExperimentTracker(config=config, enabled=False)
+        tracker.init_run()
+        tracker.finish_run()
+        assert tracker._finished
+        tracker.init_run()
+        assert not tracker._finished
+        assert tracker.is_active is False
