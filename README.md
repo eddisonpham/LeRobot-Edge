@@ -103,7 +103,7 @@ SmolVLA (864 MB, ~450M params) — measured on NVIDIA RTX 5060 and Intel CPU. Al
 | Format | Model Size | VRAM at Inference | Compression |
 |--------|-----------|-------------------|-------------|
 | FP32 (original) | 864 MB | ~864 MB | -- |
-| Dynamic INT8 | 864 MB | ~432 MB | Weights FP32, activations INT8 |
+| Dynamic INT8 | 864 MB | Reduced vs FP32 | Weights FP32, activations INT8 |
 | Static INT8 | ~216 MB | ~216 MB | 4x (estimated) |
 | 4-bit NF4 | ~108 MB | ~108 MB | 8x (estimated) |
 
