@@ -2,14 +2,14 @@
 
 > Policy compression and edge deployment plugin for [HuggingFace LeRobot](https://github.com/huggingface/lerobot)
 
-**lerobot_edge** is a standalone extension package that plugs into LeRobot's policy system to add quantization, ONNX export, teacher-student distillation, benchmarking, evaluation metrics, and experiment tracking for edge deployment.
+**lerobot_edge** is a standalone extension package that plugs into LeRobot's policy system to add quantization, ONNX export, TensorRT inference, teacher-student distillation, benchmarking, evaluation metrics, and experiment tracking for edge deployment.
 
 ## Architecture
 
 ```mermaid
 graph TD
     A[FP32 Checkpoint<br/>e.g. lerobot/smolvla_base] --> B{Compression Path}
-    B --> C[compression/<br/>INT8 / 4-bit]
+    B --> C[compression/<br/>INT8 via torchao / 4-bit]
     B --> D[compression/<br/>Teacher-Student]
     C --> E[Compressed Model]
     D --> E
@@ -27,10 +27,10 @@ graph TD
 ```
 lerobot_edge/
   core/              # Backends, configs, router, utilities
-  compression/       # Quantization (INT8, 4-bit) and distillation
-  export/            # ONNX export and TensorRT export
-  evaluation/        # Benchmark harness, metrics, Pareto reports
-  tracking/    # W&B experiment tracking, local JSON fallback
+  compression/       # Quantization (INT8 via torchao, 4-bit) and distillation
+  export/            # ONNX export and TensorRT export with I/O bindings
+  evaluation/        # Benchmark harness, metrics, Pareto reports, backend comparison
+  tracking/          # W&B experiment tracking, local JSON fallback
   configs.py         # Config dataclasses (backward-compatible re-export)
   quantize.py        # Quantization functions (backward-compatible re-export)
   benchmark.py       # Benchmark harness (backward-compatible re-export)
@@ -43,10 +43,15 @@ lerobot_edge/
 pip install lerobot-edge
 pip install "lerobot-edge[onnx]"        # ONNX support
 pip install "lerobot-edge[quantize]"    # bitsandbytes
-pip install "lerobot-edge[tensorrt]"    # TensorRT (GPU)
+pip install "lerobot-edge[tensorrt]"    # TensorRT (GPU, requires pycuda)
 pip install "lerobot-edge[wandb]"       # W&B experiment tracking
 pip install "lerobot-edge[all]"         # everything
 ```
+
+### Dependencies
+
+- **torchao** (>=0.17.0) is the primary quantization backend, replacing the deprecated `torch.ao.quantization`. Dynamic INT8 quantization uses `Int8DynamicActivationInt8WeightConfig`, and static INT8 uses `AffineQuantizedMinMaxObserver` with custom `ObservedLinear` / `QuantizedLinear` modules.
+- When torchao is not installed, the codebase falls back to legacy `torch.quantization.quantize_dynamic` automatically.
 
 ## Quickstart
 
@@ -82,11 +87,13 @@ lerobot-eval \
 | Variant | Description | Requirements |
 |---------|-------------|--------------|
 | `edge_identity` | Passthrough wrapper | Core |
-| `edge_quant_int8` | Dynamic INT8 quantization | Core |
+| `edge_quant_int8` | Dynamic INT8 quantization (torchao) | Core |
 | `edge_onnx_fp32` | ONNX Runtime (FP32) | `lerobot-edge[onnx]` |
 | `edge_onnx_int8` | ONNX Runtime (INT8) | `lerobot-edge[onnx]` |
 | `edge_distilled` | Teacher-student distilled | Core |
 | `edge_distilled_onnx_int8` | Distilled + ONNX + INT8 | `lerobot-edge[onnx]` |
+
+> **GPU-only**: TensorRT backends require a CUDA-capable GPU and the `tensorrt` + `pycuda` packages.
 
 ## Makefile Commands
 
@@ -116,16 +123,47 @@ make ci                 # install-dev + lint + typecheck + test
 
 ## Benchmarking
 
+### Full Pipeline Benchmark
+
 ```bash
 lerobot-edge-benchmark \
   --checkpoint=lerobot/smolvla_base \
   --variants=edge_identity edge_quant_int8 \
   --device-profile=laptop_cpu \
   --output-dir=benchmark_results
+```
 
+### Backend Comparison
+
+Compare identity vs INT8 quantized backends:
+
+```bash
+python -m lerobot_edge.evaluation.compare_backends \
+  --warmup 10 --num-runs 100 --device cpu
+```
+
+### Generate Report
+
+```bash
 lerobot-edge-report \
   --results-dir=benchmark_results \
-  --output-dir=docs
+  --output-dir docs
+```
+
+## Configuration
+
+### Custom Policy Type
+
+By default, `CompressedPolicy._build_backend_from_checkpoint` loads SmolVLA checkpoints. To use a different architecture, set `source_policy_type` in your config:
+
+```python
+from lerobot_edge.configs import EdgeQuantInt8Config
+
+config = EdgeQuantInt8Config(
+    source_pretrained_path="path/to/checkpoint",
+    source_policy_type="act",  # or any LeRobot policy type
+    device="cpu",
+)
 ```
 
 ## Evaluation Metrics
@@ -150,10 +188,10 @@ mean, lower, upper = bootstrap_confidence_interval(latency_list, confidence=0.95
 
 ## Experiment Tracking
 
-The `monitoring` module provides optional Weights & Biases integration:
+The `tracking` module provides optional Weights & Biases integration:
 
 ```python
-from lerobot_edge.monitoring import ExperimentTracker, TrackConfig
+from lerobot_edge.tracking import ExperimentTracker, TrackConfig
 
 config = TrackConfig(project="my-project", tags=["int8-quantization"])
 tracker = ExperimentTracker(config=config)

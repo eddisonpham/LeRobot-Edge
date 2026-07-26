@@ -1,0 +1,144 @@
+"""Benchmark comparison across quantization backends."""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+from lerobot_edge.core.base import IdentityBackend
+from lerobot_edge.compression.quantize import QuantizedBackend
+from lerobot_edge.core.configs import EdgeQuantInt8Config
+from lerobot_edge.core.utils import measure_model_memory
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["compare_all_backends", "print_comparison"]
+
+
+def compare_all_backends(
+    model: nn.Module,
+    dummy_input: dict[str, torch.Tensor],
+    *,
+    warmup: int = 10,
+    num_runs: int = 100,
+    device: str = "cpu",
+) -> dict[str, Any]:
+    """Benchmark identity vs INT8 quantized backend."""
+    dev = torch.device(device)
+    results: dict[str, Any] = {}
+
+    identity = IdentityBackend(model, dev)
+    results["identity"] = _bench_backend(identity, dummy_input, warmup, num_runs)
+    results["identity"]["memory"] = measure_model_memory(model)
+
+    quant_config = EdgeQuantInt8Config(device=device)
+    quantized = QuantizedBackend.from_policy(model, quant_config)
+    results["dynamic_int8"] = _bench_backend(quantized, dummy_input, warmup, num_runs)
+    if hasattr(quantized, "_policy"):
+        results["dynamic_int8"]["memory"] = measure_model_memory(quantized._policy)
+
+    try:
+        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend, HAS_ONNX, HAS_ORT
+        if HAS_ONNX and HAS_ORT:
+            from lerobot_edge.core.configs import EdgeOnnxFp32Config
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdir:
+                onnx_path = Path(tmpdir) / "model.onnx"
+                onnx_config = EdgeOnnxFp32Config(device=device)
+                export_policy_to_onnx(model, onnx_config, onnx_path)
+                ort_backend = OnnxRuntimeBackend(onnx_path, device=dev)
+                results["onnx_fp32"] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
+    except Exception as e:
+        logger.warning("ONNX benchmark skipped: %s", e)
+
+    return results
+
+
+def _bench_backend(backend, dummy_input, warmup, num_runs):
+    device = backend.device
+    inp = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in dummy_input.items()}
+
+    for _ in range(warmup):
+        backend.predict(inp)
+
+    latencies = []
+    with torch.no_grad():
+        for _ in range(num_runs):
+            start = time.perf_counter()
+            backend.predict(inp)
+            latencies.append((time.perf_counter() - start) * 1000)
+
+    arr = np.array(latencies)
+    return {
+        "latency_mean_ms": float(np.mean(arr)),
+        "latency_p50_ms": float(np.percentile(arr, 50)),
+        "latency_p95_ms": float(np.percentile(arr, 95)),
+        "latency_std_ms": float(np.std(arr)),
+        "throughput_fps": 1000.0 / float(np.mean(arr)) if np.mean(arr) > 0 else 0,
+        "num_runs": num_runs,
+    }
+
+
+def print_comparison(results: dict[str, Any]) -> None:
+    print("\n" + "=" * 80)
+    print("BACKEND COMPARISON")
+    print("=" * 80)
+    print(f"{'Backend':<20} {'Mean (ms)':<12} {'P50 (ms)':<12} {'P95 (ms)':<12} {'FPS':<10}")
+    print("-" * 80)
+    for name, r in results.items():
+        mem = r.get("memory", {})
+        mem_str = f" ({mem.get('total_mb', 0):.1f} MB)" if mem else ""
+        print(f"{name + mem_str:<20} {r['latency_mean_ms']:>8.2f}    {r['latency_p50_ms']:>8.2f}    {r['latency_p95_ms']:>8.2f}    {r['throughput_fps']:>8.1f}")
+    print("=" * 80)
+
+
+def main() -> None:
+    import argparse
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    parser = argparse.ArgumentParser(description="Compare backend performance")
+    parser.add_argument("--output", type=str, default="benchmark_results/comparison.json")
+    parser.add_argument("--warmup", type=int, default=10)
+    parser.add_argument("--num-runs", type=int, default=100)
+    parser.add_argument("--device", type=str, default="cpu")
+    args = parser.parse_args()
+
+    class SimpleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layer1 = nn.Linear(7, 64)
+            self.layer2 = nn.Linear(64, 32)
+            self.layer3 = nn.Linear(32, 2)
+            self.relu = nn.ReLU()
+        def forward(self, x):
+            return self.layer3(self.relu(self.layer2(self.relu(self.layer1(x)))))
+        def select_action(self, batch):
+            for key, val in batch.items():
+                if isinstance(val, torch.Tensor) and val.dim() == 2:
+                    return self.forward(val)
+            return self.forward(list(batch.values())[0])
+        def reset(self):
+            pass
+
+    model = SimpleModel()
+    dummy_input = {"observation.state": torch.randn(1, 7)}
+
+    results = compare_all_backends(model, dummy_input, warmup=args.warmup, num_runs=args.num_runs, device=args.device)
+    print_comparison(results)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2, default=str)
+    print(f"\nResults saved to {output_path}")
+
+
+if __name__ == "__main__":
+    main()
