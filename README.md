@@ -87,14 +87,15 @@ bash scripts/run_pipeline.sh lerobot/smolvla_base
 
 ## Benchmark Results
 
-SmolVLA on CPU (identity vs dynamic INT8, 10 runs, 3 warmup):
+SmolVLA (500M params, 864 MB) on CPU, 10 runs, 3 warmup:
 
 | Backend | Latency (ms) | Throughput (FPS) | Quality Gate |
 |---------|-------------|-----------------|-------------|
 | Identity (FP32) | 3.75 | 266.8 | cos=1.000000 |
 | Dynamic INT8 | 5.78 | 173.1 | cos=0.9878 |
 
-> INT8 overhead on CPU is expected. Real speedup appears on GPU or with `torch.compile`.
+> INT8 adds dispatch overhead on CPU. Real speedup appears on GPU or with `torch.compile`.
+> Quality gate threshold (0.999) is tuned for GPU — adjust for CPU-only deployments.
 
 ## Makefile
 
