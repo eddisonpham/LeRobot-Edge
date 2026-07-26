@@ -23,25 +23,29 @@ logger = logging.getLogger(__name__)
 __all__ = ["compare_all_backends", "print_comparison"]
 
 
-def _simple_model():
-    class SimpleModel(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.layer1 = nn.Linear(7, 64)
-            self.layer2 = nn.Linear(64, 32)
-            self.layer3 = nn.Linear(32, 2)
-            self.relu = nn.ReLU()
-        def forward(self, x):
-            return self.layer3(self.relu(self.layer2(self.relu(self.layer1(x)))))
-        def select_action(self, batch):
-            for key, val in batch.items():
-                if isinstance(val, torch.Tensor) and val.dim() == 2:
-                    return self.forward(val)
-            return self.forward(list(batch.values())[0])
-        def reset(self):
-            pass
+class _SimpleModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer1 = nn.Linear(7, 64)
+        self.layer2 = nn.Linear(64, 32)
+        self.layer3 = nn.Linear(32, 2)
+        self.relu = nn.ReLU()
 
-    return SimpleModel(), {"observation.state": torch.randn(1, 7)}
+    def forward(self, x):
+        return self.layer3(self.relu(self.layer2(self.relu(self.layer1(x)))))
+
+    def select_action(self, batch):
+        for val in batch.values():
+            if isinstance(val, torch.Tensor) and val.dim() == 2:
+                return self.forward(val)
+        return self.forward(list(batch.values())[0])
+
+    def reset(self):
+        return
+
+
+def _simple_model():
+    return _SimpleModel(), {"observation.state": torch.randn(1, 7)}
 
 
 DEFAULT_BACKENDS = ["identity", "int8"]
@@ -106,7 +110,6 @@ def _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, key, config_
             results[key] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
     except (ImportError, FileNotFoundError, RuntimeError) as e:
         logger.warning("ONNX benchmark failed (%s): %s", key, e)
-
 
 
 

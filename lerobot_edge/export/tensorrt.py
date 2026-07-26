@@ -176,7 +176,7 @@ class TensorRTBackend(DeploymentBackend):
                 cuda.mem_free(ptr)
 
     def reset(self) -> None:
-        pass
+        return
 
     @property
     def device(self) -> torch.device:

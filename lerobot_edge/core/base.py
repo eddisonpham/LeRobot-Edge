@@ -83,8 +83,8 @@ class IdentityBackend(NativePyTorchBackend):
 class CompressedPolicy(PreTrainedPolicy):
     """Wraps a DeploymentBackend behind LeRobot's policy interface."""
 
-    config_class = EdgeBaseConfig  # type: ignore[assignment]
-    name = "edge_compressed"  # type: ignore[assignment]
+    config_class = EdgeBaseConfig
+    name = "edge_compressed"
 
     def __init__(
         self,
@@ -183,7 +183,7 @@ class CompressedPolicy(PreTrainedPolicy):
 
 
 class _PlaceholderBackend(DeploymentBackend):
-    """Minimal backend that returns zeros — used for registration tests."""
+    """Minimal backend returning zeros — used for registration tests."""
 
     def __init__(self, device: str | torch.device = "cpu") -> None:
         self._device = torch.device(device)
@@ -195,7 +195,7 @@ class _PlaceholderBackend(DeploymentBackend):
         return torch.zeros(1, device=self._device)
 
     def reset(self) -> None:
-        pass
+        return
 
     @property
     def device(self) -> torch.device:

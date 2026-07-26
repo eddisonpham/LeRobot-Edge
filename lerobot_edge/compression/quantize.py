@@ -226,7 +226,7 @@ def quantize_4bit(model: nn.Module) -> nn.Module:
     try:
         for name, module in model.named_modules():
             if isinstance(module, nn.Linear):
-                bnb.nn.modules.optimizer_params.prepare_for_4bit(module)
+                bnb.nn.int4_ready(module)
                 logger.debug("Quantized layer %s to 4-bit", name)
 
         logger.info("4-bit quantization applied successfully.")

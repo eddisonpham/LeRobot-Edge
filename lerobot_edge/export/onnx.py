@@ -190,7 +190,7 @@ class OnnxRuntimeBackend(DeploymentBackend):
         return torch.zeros(1, device=self._device)
 
     def reset(self) -> None:
-        pass
+        return
 
     @property
     def device(self) -> torch.device:

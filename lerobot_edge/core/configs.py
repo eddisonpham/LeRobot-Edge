@@ -67,7 +67,7 @@ class EdgeBaseConfig(PreTrainedConfig):
         return None
 
     def validate_features(self) -> None:
-        pass
+        return
 
 
 @PreTrainedConfig.register_subclass("edge_identity")
