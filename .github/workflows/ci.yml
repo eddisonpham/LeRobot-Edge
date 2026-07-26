@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        torchao: [true, false]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          if [ "${{ matrix.torchao }}" = "true" ]; then
+            pip install torchao>=0.17.0,<0.18
+          else
+            pip uninstall -y torchao
+          fi
+      - name: Verify torchao status
+        run: |
+          python -c "
+          try:
+              from torchao.quantization import quantize_
+              print('torchao: INSTALLED')
+          except ImportError:
+              print('torchao: NOT INSTALLED')
+          "
+      - name: Run tests
+        run: pytest tests/test_quantize.py tests/test_local_pipeline.py tests/test_configs.py -v --tb=short
+      - name: Verify code path
+        run: |
+          python -c "
+          from lerobot_edge.compression.quantize import HAS_TORCHAO
+          print(f'HAS_TORCHAO: {HAS_TORCHAO}')
+          expected = '${{ matrix.torchao }}' == 'true'
+          assert HAS_TORCHAO == expected, f'Expected HAS_TORCHAO={expected}, got {HAS_TORCHAO}'
+          print('Code path verification: PASSED')
+          "
