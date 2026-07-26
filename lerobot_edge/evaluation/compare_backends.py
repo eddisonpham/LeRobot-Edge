@@ -44,6 +44,10 @@ def _simple_model():
     return SimpleModel(), {"observation.state": torch.randn(1, 7)}
 
 
+DEFAULT_BACKENDS = ["identity", "int8"]
+ALL_BACKENDS = ["identity", "int8", "onnx_fp32", "onnx_int8"]
+
+
 def compare_all_backends(
     model: nn.Module,
     dummy_input: dict[str, torch.Tensor],
@@ -51,28 +55,39 @@ def compare_all_backends(
     warmup: int = 10,
     num_runs: int = 100,
     device: str = "cpu",
-    enable_onnx: bool = False,
-    enable_onnx_int8: bool = False,
+    backends: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Benchmark identity vs INT8 quantized backend."""
+    """Benchmark selected backends against the original model.
+
+    Args:
+        backends: Which backends to benchmark. Default ["identity", "int8"].
+            Options: "identity", "int8", "onnx_fp32", "onnx_int8".
+    """
+    if backends is None:
+        backends = list(DEFAULT_BACKENDS)
+
     dev = torch.device(device)
     results: dict[str, Any] = {}
 
-    identity = IdentityBackend(model, dev)
-    results["identity"] = _bench_backend(identity, dummy_input, warmup, num_runs)
-    results["identity"]["memory"] = measure_model_memory(model)
+    if "identity" in backends:
+        identity = IdentityBackend(model, dev)
+        results["identity"] = _bench_backend(identity, dummy_input, warmup, num_runs)
+        results["identity"]["memory"] = measure_model_memory(model)
 
-    quant_config = EdgeQuantInt8Config(device=device)
-    quantized = QuantizedBackend.from_policy(model, quant_config)
-    results["dynamic_int8"] = _bench_backend(quantized, dummy_input, warmup, num_runs)
-    if hasattr(quantized, "_policy"):
-        results["dynamic_int8"]["memory"] = measure_model_memory(quantized._policy)
+    if "int8" in backends:
+        quant_config = EdgeQuantInt8Config(device=device)
+        quantized = QuantizedBackend.from_policy(model, quant_config)
+        results["dynamic_int8"] = _bench_backend(quantized, dummy_input, warmup, num_runs)
+        if hasattr(quantized, "_policy"):
+            results["dynamic_int8"]["memory"] = measure_model_memory(quantized._policy)
 
-    if enable_onnx:
-        _bench_onnx_fp32(model, dummy_input, dev, warmup, num_runs, results)
+    if "onnx_fp32" in backends:
+        from lerobot_edge.core.configs import EdgeOnnxFp32Config
+        _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, "onnx_fp32", EdgeOnnxFp32Config, "model.onnx")
 
-    if enable_onnx_int8:
-        _bench_onnx_int8(model, dummy_input, dev, warmup, num_runs, results)
+    if "onnx_int8" in backends:
+        from lerobot_edge.core.configs import EdgeOnnxInt8Config
+        _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, "onnx_int8", EdgeOnnxInt8Config, "model_int8.onnx")
 
     return results
 
@@ -93,14 +108,6 @@ def _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, key, config_
         logger.warning("ONNX benchmark failed (%s): %s", key, e)
 
 
-def _bench_onnx_fp32(model, dummy_input, dev, warmup, num_runs, results):
-    from lerobot_edge.core.configs import EdgeOnnxFp32Config
-    _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, "onnx_fp32", EdgeOnnxFp32Config, "model.onnx")
-
-
-def _bench_onnx_int8(model, dummy_input, dev, warmup, num_runs, results):
-    from lerobot_edge.core.configs import EdgeOnnxInt8Config
-    _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, "onnx_int8", EdgeOnnxInt8Config, "model_int8.onnx")
 
 
 def _bench_backend(backend, dummy_input, warmup, num_runs):
@@ -162,8 +169,9 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--num-runs", type=int, default=100)
     parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--onnx", action="store_true", help="Enable ONNX Runtime FP32 benchmark")
-    parser.add_argument("--onnx-int8", action="store_true", help="Enable ONNX Runtime INT8 benchmark")
+    parser.add_argument("--backends", nargs="+", default=None,
+                        choices=ALL_BACKENDS,
+                        help=f"Backends to benchmark (default: identity int8). Options: {', '.join(ALL_BACKENDS)}")
     args = parser.parse_args()
 
     if args.checkpoint:
@@ -178,7 +186,7 @@ def main() -> None:
     else:
         model, dummy_input = _simple_model()
 
-    results = compare_all_backends(model, dummy_input, warmup=args.warmup, num_runs=args.num_runs, device=args.device, enable_onnx=args.onnx, enable_onnx_int8=args.onnx_int8)
+    results = compare_all_backends(model, dummy_input, warmup=args.warmup, num_runs=args.num_runs, device=args.device, backends=args.backends)
     results["checkpoint"] = args.checkpoint or "simple_model"
     results["policy_type"] = args.policy_type if args.checkpoint else None
     print_comparison(results)
