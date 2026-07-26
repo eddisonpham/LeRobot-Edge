@@ -87,7 +87,7 @@ bash scripts/run_pipeline.sh lerobot/smolvla_base
 
 ## Benchmark Results
 
-SmolVLA (500M params, 864 MB) on CPU, 10 runs, 3 warmup:
+SmolVLA (864 MB) on Intel i7 CPU, 10 runs, 3 warmup:
 
 | Backend | Latency (ms) | Throughput (FPS) | Quality Gate |
 |---------|-------------|-----------------|-------------|
@@ -95,7 +95,7 @@ SmolVLA (500M params, 864 MB) on CPU, 10 runs, 3 warmup:
 | Dynamic INT8 | 5.78 | 173.1 | cos=0.9878 |
 
 > INT8 adds dispatch overhead on CPU. Real speedup appears on GPU or with `torch.compile`.
-> Quality gate threshold (0.999) is tuned for GPU — adjust for CPU-only deployments.
+> For CPU-only deployments, set `min_cosine_similarity=0.98` in the quality gate.
 
 ## Makefile
 
