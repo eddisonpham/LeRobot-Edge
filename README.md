@@ -87,14 +87,15 @@ bash scripts/run_pipeline.sh lerobot/smolvla_base
 
 ## Benchmark Results
 
-SmolVLA (864 MB) on NVIDIA RTX 5060, 20 runs, 5 warmup:
+SmolVLA (864 MB) — measured on real hardware:
 
-| Backend | Latency (ms) | Throughput (FPS) | Quality Gate |
-|---------|-------------|-----------------|-------------|
-| Identity (FP32) | 1.47 | 681.8 | cos=1.000000 |
-| Dynamic INT8 | 1.55 | 644.6 | cos=0.9971 |
+| Backend | GPU Latency (ms) | GPU FPS | CPU Latency (ms) | CPU FPS | Quality Gate |
+|---------|-----------------|---------|-----------------|---------|-------------|
+| Identity (FP32) | 1.47 | 681.8 | 3.75 | 266.8 | cos=1.000000 |
+| Dynamic INT8 | 1.55 | 644.6 | 5.78 | 173.1 | cos=0.9971 |
 
-> GPU INT8 overhead is only 5% (vs 54% on CPU). INT8 tensor cores on GPU handle dequantization efficiently.
+> GPU INT8 overhead is only 5% — INT8 tensor cores handle dequantization efficiently.
+> CPU INT8 adds 54% overhead — use GPU or `torch.compile` for real speedup.
 > Quality gate defaults to `min_cosine_similarity=0.98`. For strict validation, set it to `0.999`.
 
 ## Makefile
