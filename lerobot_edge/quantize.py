@@ -282,18 +282,82 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Load source policy
-    from lerobot.policies.factory import get_policy_class
-
     logger.info("Loading policy from %s...", args.source)
 
-    # For now, we quantize the raw PyTorch state dict
-    # A full implementation would load via from_pretrained
+    # Load policy via LeRobot's factory
+    from lerobot.policies.factory import make_policy, make_policy_config
+
+    device = torch.device(args.device)
+    config = make_policy_config("smolvla")
+    config.pretrained_path = args.source
+    config.device = args.device
+
+    try:
+        policy = make_policy(config)
+        policy.eval()
+    except Exception as e:
+        logger.error("Failed to load policy: %s", e)
+        return
+
+    # Measure original memory
+    original_mem = measure_model_memory(policy)
+    logger.info("Original model: %.1f MB, %d parameters",
+                original_mem["total_mb"], original_mem["num_parameters"])
+
+    # Apply quantization
+    logger.info("Applying %s quantization...", args.method)
+    if args.method == "dynamic_int8":
+        quantized = dynamic_int8_quantize(policy)
+    elif args.method == "static_int8":
+        # Static quantization requires calibration data; use dummy data for demo
+        logger.warning("Static INT8 requires calibration data. Using dummy calibration.")
+        calibration_data = {"observation.state": torch.randn(1, 2)}
+        quantized = static_int8_quantize(policy, calibration_data)
+    elif args.method == "4bit":
+        quantized = quantize_4bit(policy)
+    else:
+        logger.error("Unknown method: %s", args.method)
+        return
+
+    # Measure quantized memory
+    quantized_mem = measure_model_memory(quantized)
+    reduction = (1 - quantized_mem["total_mb"] / original_mem["total_mb"]) * 100
+    logger.info("Quantized model: %.1f MB, %d parameters (%.1f%% reduction)",
+                quantized_mem["total_mb"], quantized_mem["num_parameters"], reduction)
+
+    # Save quantized checkpoint in LeRobot-compatible format
     output_path = Path(args.output)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Quantized checkpoint saved to %s", output_path)
-    logger.info("Method: %s, Device: %s", args.method, args.device)
+    try:
+        # Save state dict as PyTorch file (not actual safetensors format)
+        torch.save(quantized.state_dict(), output_path / "model.pt")
+        # Save config for reloading
+        import json
+        config_dict = {
+            "type": "smolvla",
+            "source": args.source,
+            "device": args.device,
+            "quantization": args.method,
+            "original_mb": original_mem["total_mb"],
+            "quantized_mb": quantized_mem["total_mb"],
+        }
+        with open(output_path / "config.json", "w") as f:
+            json.dump(config_dict, f, indent=2)
+        logger.info("Quantized checkpoint saved to %s", output_path)
+    except Exception as e:
+        logger.error("Failed to save checkpoint: %s", e)
+
+    # Print summary
+    print("\n" + "=" * 60)
+    print("QUANTIZATION RESULTS")
+    print("=" * 60)
+    print(f"Method:      {args.method}")
+    print(f"Original:    {original_mem['total_mb']:.1f} MB")
+    print(f"Quantized:   {quantized_mem['total_mb']:.1f} MB")
+    print(f"Reduction:   {reduction:.1f}%")
+    print(f"Saved to:    {output_path}")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

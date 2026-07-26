@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 from lerobot_edge.base import DeploymentBackend
 from lerobot_edge.configs import EdgeBaseConfig
@@ -376,19 +377,126 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     logger.info("Benchmark CLI starting...")
     logger.info("Checkpoint: %s", args.checkpoint)
     logger.info("Variants: %s", args.variants)
     logger.info("Device profile: %s", args.device_profile)
 
-    # TODO: Load checkpoint and create backends for each variant
-    # For now, log the configuration
-    logger.info(
-        "Configuration: warmup=%d, num_runs=%d, output_dir=%s",
-        args.warmup,
-        args.num_runs,
-        args.output_dir,
+    # Load checkpoint via LeRobot's policy factory
+    from lerobot.policies.factory import make_policy, make_policy_config
+    from lerobot_edge.base import IdentityBackend, NativePyTorchBackend
+    from lerobot_edge.quantize import QuantizedBackend
+    from lerobot_edge.configs import (
+        EdgeIdentityConfig,
+        EdgeQuantInt8Config,
+        EdgeOnnxFp32Config,
+        EdgeOnnxInt8Config,
     )
+
+    device = torch.device(args.device_profile)
+
+    # Create policy config and load model
+    # We use smolvla config as the base, then load from checkpoint
+    config = make_policy_config("smolvla")
+    config.pretrained_path = args.checkpoint
+    config.device = str(device)
+
+    logger.info("Loading policy from %s...", args.checkpoint)
+    try:
+        policy = make_policy(config)
+        policy.eval()
+    except Exception as e:
+        logger.error("Failed to load policy: %s", e)
+        return
+
+    # Build dummy input from policy's expected features
+    dummy_input = _build_dummy_input(policy, device)
+
+    # Create backends for each requested variant
+    variants: dict[str, NativePyTorchBackend] = {}
+    variant_config_map = {
+        "edge_identity": EdgeIdentityConfig,
+        "edge_quant_int8": EdgeQuantInt8Config,
+        "edge_onnx_fp32": EdgeOnnxFp32Config,
+        "edge_onnx_int8": EdgeOnnxInt8Config,
+    }
+
+    for variant_name in args.variants:
+        logger.info("Creating backend for variant: %s", variant_name)
+        try:
+            if variant_name == "edge_identity":
+                variants[variant_name] = IdentityBackend(policy)
+            elif variant_name in ("edge_quant_int8",):
+                edge_config = variant_config_map[variant_name](device=str(device))
+                variants[variant_name] = QuantizedBackend.from_policy(policy, edge_config)
+            else:
+                # Default: identity backend
+                logger.warning("Unknown variant '%s', using identity backend", variant_name)
+                variants[variant_name] = IdentityBackend(policy)
+        except Exception as e:
+            logger.error("Failed to create backend for %s: %s", variant_name, e)
+
+    if not variants:
+        logger.error("No variants to benchmark")
+        return
+
+    # Run benchmarks
+    results = benchmark_policy_variants(
+        variants,
+        dummy_input,
+        device_profile=args.device_profile,
+        output_dir=args.output_dir,
+        warmup_runs=args.warmup,
+        num_runs=args.num_runs,
+    )
+
+    # Print summary table
+    print("\n" + "=" * 80)
+    print("BENCHMARK RESULTS")
+    print("=" * 80)
+    print(f"{'Backend':<25} {'Latency (ms)':<20} {'Throughput (fps)':<20} {'Memory (MB)':<15}")
+    print("-" * 80)
+    for r in results:
+        print(f"{r.backend_name:<25} {r.latency_mean_ms:>8.2f} ± {r.latency_std_ms:<6.2f} {r.throughput_fps:>12.1f} {r.peak_memory_mb:>10.1f}")
+    print("=" * 80)
+    print(f"\nResults saved to {args.output_dir}/")
+
+
+def _build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torch.Tensor]:
+    """Build a dummy input batch from policy's expected features."""
+    from lerobot.configs import FeatureType
+
+    dummy_input = {}
+    if hasattr(policy, 'config') and hasattr(policy.config, 'input_features'):
+        for name, feature in policy.config.input_features.items():
+            if feature.type == FeatureType.VISUAL:
+                # Default image shape: (batch, channels, height, width)
+                shape = list(feature.shape) if hasattr(feature, 'shape') else [3, 224, 224]
+                if len(shape) == 3:  # No batch dim
+                    shape.insert(0, 1)
+                dummy_input[name] = torch.randn(shape, device=device)
+            elif feature.type == FeatureType.STATE:
+                shape = list(feature.shape) if hasattr(feature, 'shape') else [7]
+                if len(shape) == 1:  # No batch dim
+                    shape.insert(0, 1)
+                dummy_input[name] = torch.randn(shape, device=device)
+            else:
+                shape = list(feature.shape) if hasattr(feature, 'shape') else [1]
+                if len(shape) == 0:
+                    shape = [1]
+                elif len(shape) == 1 and shape[0] != 1:
+                    shape.insert(0, 1)
+                dummy_input[name] = torch.randn(shape, device=device)
+
+    # Fallback if no features found
+    if not dummy_input:
+        dummy_input = {
+            "observation.images": torch.randn(1, 3, 224, 224, device=device),
+            "observation.state": torch.randn(1, 2, device=device),
+        }
+
+    return dummy_input
 
 
 if __name__ == "__main__":
