@@ -19,7 +19,6 @@ __all__ = [
     "static_int8_quantize",
     "quantize_4bit",
     "QuantizedBackend",
-    "measure_model_memory",
 ]
 
 try:
