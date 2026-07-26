@@ -39,7 +39,7 @@ except ImportError:
     HAS_TORCHAO = False
 
 try:
-    import bitsandbytes as bnb
+    import bitsandbytes as bnb  # noqa: F401
 
     HAS_BNB = True
 except ImportError:
@@ -238,13 +238,44 @@ def quantize_4bit(model: nn.Module) -> nn.Module:
     logger.info("Applying 4-bit quantization via bitsandbytes...")
 
     try:
-        for name, module in model.named_modules():
-            if isinstance(module, nn.Linear):
-                bnb.nn.int4_ready(module)
-                logger.debug("Quantized layer %s to 4-bit", name)
+        from bitsandbytes.nn.modules import Linear4bit
+    except ImportError as e:
+        raise ImportError(
+            "bitsandbytes version too old: Linear4bit not found. Upgrade with: pip install --upgrade bitsandbytes"
+        ) from e
 
-        logger.info("4-bit quantization applied successfully.")
+    try:
+        linear_layers = [
+            (name, module)
+            for name, module in model.named_modules()
+            if isinstance(module, nn.Linear)
+        ]
+        if not linear_layers:
+            logger.warning("No nn.Linear modules found to quantize.")
+            return model
+
+        modules_dict = dict(model.named_modules())
+        for name, module in linear_layers:
+            parent_name, _, child_name = name.rpartition(".")
+            parent = model if not parent_name else modules_dict[parent_name]
+            new_layer = Linear4bit(
+                module.in_features,
+                module.out_features,
+                bias=module.bias is not None,
+                compute_dtype=module.weight.dtype,
+                compress_statistics=True,
+                quant_type="nf4",
+            )
+            new_layer.weight = nn.Parameter(module.weight, requires_grad=False)
+            if module.bias is not None:
+                new_layer.bias = nn.Parameter(module.bias, requires_grad=False)
+            setattr(parent, child_name, new_layer)
+            logger.debug("Replaced layer %s with Linear4bit", name)
+
+        logger.info("4-bit quantization applied to %d Linear layers.", len(linear_layers))
         return model
+    except ImportError:
+        raise
     except Exception as e:
         logger.warning("4-bit quantization failed: %s. Returning original.", e)
         return model
