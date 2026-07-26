@@ -18,6 +18,10 @@ from lerobot_edge.base import DeploymentBackend
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "ConfidenceRouter",
+]
+
 
 class ConfidenceRouter:
     """Routes inference between edge and cloud backends based on confidence.

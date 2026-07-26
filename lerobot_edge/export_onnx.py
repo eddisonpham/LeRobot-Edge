@@ -20,6 +20,12 @@ from lerobot_edge.configs import EdgeBaseConfig
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "export_policy_to_onnx",
+    "OnnxRuntimeBackend",
+    "validate_onnx_model",
+]
+
 # ---------------------------------------------------------------------------
 # Optional dependency: onnxruntime
 # ---------------------------------------------------------------------------

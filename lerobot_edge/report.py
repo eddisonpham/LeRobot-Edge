@@ -18,6 +18,13 @@ from lerobot_edge.benchmark import BenchmarkResult, load_results
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "aggregate_results",
+    "generate_results_table",
+    "plot_pareto_frontier",
+    "generate_report",
+]
+
 # ---------------------------------------------------------------------------
 # Optional dependency: matplotlib
 # ---------------------------------------------------------------------------

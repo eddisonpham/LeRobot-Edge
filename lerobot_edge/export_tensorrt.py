@@ -18,6 +18,13 @@ from lerobot_edge.configs import EdgeBaseConfig
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "HAS_TENSORRT",
+    "export_onnx_to_tensorrt",
+    "TensorRTBackend",
+    "get_tensorrt_info",
+]
+
 # ---------------------------------------------------------------------------
 # Optional dependency: TensorRT
 # ---------------------------------------------------------------------------

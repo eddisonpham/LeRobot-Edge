@@ -24,6 +24,14 @@ from lerobot_edge.utils import measure_model_memory
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "dynamic_int8_quantize",
+    "static_int8_quantize",
+    "quantize_4bit",
+    "QuantizedBackend",
+    "measure_model_memory",
+]
+
 # ---------------------------------------------------------------------------
 # Optional dependency: bitsandbytes
 # ---------------------------------------------------------------------------
@@ -214,9 +222,6 @@ class QuantizedBackend(NativePyTorchBackend):
 
         device = torch.device(config.device or "cpu")
         return cls(quantized, quant_type, device)
-
-
-
 
 
 # ---------------------------------------------------------------------------

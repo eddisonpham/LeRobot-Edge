@@ -58,6 +58,14 @@ def measure_peak_memory_mb() -> float:
             return 0.0
 
 
+__all__ = [
+    "get_git_commit_hash",
+    "measure_model_memory",
+    "measure_peak_memory_mb",
+    "sigmoid_scalar",
+]
+
+
 def sigmoid_scalar(x: float) -> float:
     """Compute sigmoid of a scalar without creating tensors."""
     return 1.0 / (1.0 + math.exp(-x))

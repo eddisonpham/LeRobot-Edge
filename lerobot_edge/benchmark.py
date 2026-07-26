@@ -26,6 +26,14 @@ from lerobot_edge.utils import get_git_commit_hash, measure_model_memory, measur
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "BenchmarkResult",
+    "benchmark_backend",
+    "benchmark_policy_variants",
+    "compare_results",
+    "load_results",
+]
+
 
 # ---------------------------------------------------------------------------
 # Benchmark result dataclass

@@ -20,6 +20,12 @@ from lerobot_edge.configs import EdgeBaseConfig
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "DistillationLoss",
+    "DistilledBackend",
+    "distill",
+]
+
 
 # ---------------------------------------------------------------------------
 # Distillation loss
