@@ -103,29 +103,51 @@ def static_int8_quantize(
     Args:
         model: The PyTorch model to quantize.
         calibration_data: Sample data for calibration (batch dict).
+            Values should be tensors; the function extracts the first tensor
+            to use as input for calibration forward passes.
         num_calibration_steps: Number of forward passes for calibration.
 
     Returns:
         The statically quantized model.
+
+    Raises:
+        ValueError: If calibration_data is empty or contains no tensors.
     """
     logger.info("Applying static INT8 quantization with %d calibration steps...", num_calibration_steps)
 
-    try:
-        model.eval()
-        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-        model_prepared = torch.quantization.prepare(model, inplace=False)
+    # Validate calibration data
+    if not calibration_data:
+        raise ValueError("calibration_data must not be empty")
 
-        # Run calibration
-        with torch.no_grad():
-            for i in range(min(num_calibration_steps, 1)):
-                model_prepared(calibration_data)
+    # Extract a tensor from the calibration data dict
+    # (policies may accept dicts of tensors; we use the first tensor we find)
+    calibration_tensor: torch.Tensor | None = None
+    for key, value in calibration_data.items():
+        if isinstance(value, torch.Tensor):
+            calibration_tensor = value
+            break
 
-        quantized_model = torch.quantization.convert(model_prepared, inplace=False)
-        logger.info("Static INT8 quantization applied successfully.")
-        return quantized_model
-    except Exception as e:
-        logger.warning("Static INT8 quantization failed: %s. Falling back to dynamic.", e)
-        return dynamic_int8_quantize(model)
+    if calibration_tensor is None:
+        raise ValueError(
+            "calibration_data must contain at least one tensor value. "
+            f"Got keys: {list(calibration_data.keys())}"
+        )
+
+    model.eval()
+    model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+    model_prepared = torch.quantization.prepare(model, inplace=False)
+
+    # Run calibration for the specified number of steps
+    with torch.no_grad():
+        for i in range(num_calibration_steps):
+            model_prepared(calibration_tensor)
+
+    quantized_model = torch.quantization.convert(model_prepared, inplace=False)
+    logger.info(
+        "Static INT8 quantization applied successfully after %d calibration steps.",
+        num_calibration_steps,
+    )
+    return quantized_model
 
 
 def quantize_4bit(model: nn.Module) -> nn.Module:

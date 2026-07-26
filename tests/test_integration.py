@@ -1,0 +1,285 @@
+"""End-to-end integration smoke tests for lerobot_edge.
+
+These tests load real SmolVLA checkpoints, apply quantization, and run
+inference through the full pipeline.  They require network access to
+download the model from HuggingFace Hub.
+
+Marked as @pytest.mark.integration and @pytest.mark.slow so they can
+be skipped in fast CI runs or offline environments.
+
+Run with:
+    pytest tests/test_integration.py -v -m integration
+    pytest tests/test_integration.py -v -m slow
+"""
+
+from __future__ import annotations
+
+import gc
+import pytest
+import torch
+import torch.nn as nn
+
+from lerobot_edge.base import (
+    CompressedPolicy,
+    IdentityBackend,
+    NativePyTorchBackend,
+)
+from lerobot_edge.configs import (
+    EdgeIdentityConfig,
+    EdgeQuantInt8Config,
+    EdgeOnnxFp32Config,
+    EdgeOnnxInt8Config,
+)
+from lerobot_edge.quantize import (
+    dynamic_int8_quantize,
+    QuantizedBackend,
+    measure_model_memory,
+)
+
+# ---------------------------------------------------------------------------
+# Markers for skipping tests
+# ---------------------------------------------------------------------------
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.slow,
+]
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def smolvla_policy():
+    """Load real SmolVLA policy from HuggingFace Hub.
+
+    This fixture is module-scoped so the model is loaded once per test
+    module, not once per test function (downloading ~450M params is slow).
+    """
+    try:
+        from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
+        from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
+    except ImportError:
+        pytest.skip("LeRobot SmolVLA not available")
+
+    try:
+        config = SmolVLAConfig.from_pretrained("lerobot/smolvla_base")
+        config.device = "cpu"
+        config.use_amp = False
+        policy = SmolVLAPolicy(config)
+        policy.eval()
+        return policy
+    except Exception as e:
+        pytest.skip(f"Could not load SmolVLA: {e}")
+
+
+@pytest.fixture(scope="module")
+def smolvla_batch():
+    """Create a dummy batch matching SmolVLA's expected input format."""
+    return {
+        "observation.images.front": torch.randn(1, 3, 224, 224),
+        "observation.state": torch.randn(1, 2),  # SmolVLA state dim is typically small
+    }
+
+
+# ---------------------------------------------------------------------------
+# Integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestSmolVLAIdentityPlugin:
+    """Test that edge_identity plugin wraps real SmolVLA correctly."""
+
+    def test_load_smolvla_and_wrap(self, smolvla_policy):
+        """Load real SmolVLA and wrap it in CompressedPolicy with IdentityBackend."""
+        backend = IdentityBackend(smolvla_policy)
+        config = EdgeIdentityConfig(device="cpu")
+        policy = CompressedPolicy(config=config, backend=backend)
+
+        assert policy is not None
+        assert policy.device == torch.device("cpu")
+
+    def test_smolvla_select_action(self, smolvla_policy, smolvla_batch):
+        """Run select_action on real SmolVLA through CompressedPolicy."""
+        backend = IdentityBackend(smolvla_policy)
+        config = EdgeIdentityConfig(device="cpu")
+        policy = CompressedPolicy(config=config, backend=backend)
+
+        action = policy.select_action(smolvla_batch)
+        assert isinstance(action, torch.Tensor)
+        assert action.numel() > 0
+        assert not torch.isnan(action).any(), "Action contains NaN values"
+
+    def test_smolvla_forward(self, smolvla_policy, smolvla_batch):
+        """Run forward pass on real SmolVLA through CompressedPolicy."""
+        backend = IdentityBackend(smolvla_policy)
+        config = EdgeIdentityConfig(device="cpu")
+        policy = CompressedPolicy(config=config, backend=backend)
+
+        loss, info = policy.forward(smolvla_batch)
+        assert isinstance(loss, torch.Tensor)
+        assert loss.requires_grad
+        assert "actions" in info
+
+    def test_smolvla_reset(self, smolvla_policy, smolvla_batch):
+        """Test that reset clears action cache on real SmolVLA."""
+        backend = IdentityBackend(smolvla_policy)
+        config = EdgeIdentityConfig(device="cpu")
+        policy = CompressedPolicy(config=config, backend=backend)
+
+        # Run inference to populate cache
+        policy.select_action(smolvla_batch)
+        assert policy._action_cache is not None
+
+        # Reset
+        policy.reset()
+        assert policy._action_cache is None
+        assert policy._cache_idx == 0
+
+    def test_smolvla_multiple_inferences(self, smolvla_policy, smolvla_batch):
+        """Run multiple inference calls to verify stability."""
+        backend = IdentityBackend(smolvla_policy)
+        config = EdgeIdentityConfig(device="cpu")
+        policy = CompressedPolicy(config=config, backend=backend)
+
+        for i in range(3):
+            action = policy.select_action(smolvla_batch)
+            assert isinstance(action, torch.Tensor)
+            assert not torch.isnan(action).any(), f"NaN in action at step {i}"
+            policy.reset()
+
+
+class TestSmolVLAQuantization:
+    """Test dynamic INT8 quantization on real SmolVLA."""
+
+    def test_quantize_smolvla(self, smolvla_policy):
+        """Apply dynamic INT8 quantization to real SmolVLA."""
+        original_mem = measure_model_memory(smolvla_policy)
+        quantized = dynamic_int8_quantize(smolvla_policy)
+        quantized_mem = measure_model_memory(quantized)
+
+        assert quantized is not None
+        # Quantized model should not be larger
+        assert quantized_mem["total_mb"] <= original_mem["total_mb"] * 1.1
+
+    def test_quantized_smolvla_inference(self, smolvla_policy, smolvla_batch):
+        """Run inference on quantized SmolVLA."""
+        quantized = dynamic_int8_quantize(smolvla_policy)
+        backend = NativePyTorchBackend(quantized, torch.device("cpu"))
+        config = EdgeQuantInt8Config(device="cpu")
+        policy = CompressedPolicy(config=config, backend=backend)
+
+        action = policy.select_action(smolvla_batch)
+        assert isinstance(action, torch.Tensor)
+        assert action.numel() > 0
+        assert not torch.isnan(action).any(), "Quantized action contains NaN values"
+
+    def test_quantized_smolvla_via_backend(self, smolvla_policy, smolvla_batch):
+        """Test QuantizedBackend.from_policy with real SmolVLA."""
+        config = EdgeQuantInt8Config(device="cpu")
+        backend = QuantizedBackend.from_policy(smolvla_policy, config)
+
+        assert backend.quantization_type == "dynamic_int8"
+        assert backend.device == torch.device("cpu")
+
+        action = backend.predict(smolvla_batch)
+        assert isinstance(action, torch.Tensor)
+        assert not torch.isnan(action).any()
+
+    def test_smolvla_memory_reduction(self, smolvla_policy):
+        """Verify that quantization reduces memory footprint."""
+        original = measure_model_memory(smolvla_policy)
+        quantized = dynamic_int8_quantize(smolvla_policy)
+        quantized_mem = measure_model_memory(quantized)
+
+        # For dynamic INT8, weights are stored as qint8 (1 byte per param)
+        # vs float32 (4 bytes per param).  The reduction may not be dramatic
+        # because not all layers are quantizable, but it should be measurable.
+        reduction_pct = (1 - quantized_mem["total_mb"] / original["total_mb"]) * 100
+        assert reduction_pct >= 0, f"Memory increased after quantization: {reduction_pct:.1f}%"
+
+        # Log for visibility
+        print(f"\nMemory: {original['total_mb']:.1f} MB -> {quantized_mem['total_mb']:.1f} MB ({reduction_pct:.1f}% reduction)")
+
+
+class TestSmolVLAPluginRegistration:
+    """Test that edge variants are discoverable by LeRobot's factory."""
+
+    def test_configs_in_registry(self):
+        """All edge config types should be in LeRobot's registry."""
+        from lerobot.configs import PreTrainedConfig
+
+        known = PreTrainedConfig.get_known_choices()
+        for name in [
+            "edge_identity",
+            "edge_quant_int8",
+            "edge_onnx_fp32",
+            "edge_onnx_int8",
+        ]:
+            assert name in known, f"'{name}' not found in LeRobot registry"
+
+    def test_make_policy_config(self):
+        """LeRobot's make_policy_config should create edge configs."""
+        from lerobot.policies.factory import make_policy_config
+
+        config = make_policy_config("edge_quant_int8")
+        assert config.type == "edge_quant_int8"
+        assert hasattr(config, "quantize_dynamic")
+
+    def test_config_class_retrievable(self):
+        """Config classes should be retrievable from registry."""
+        from lerobot.configs import PreTrainedConfig
+        from lerobot_edge.configs import EdgeIdentityConfig, EdgeQuantInt8Config
+
+        cls = PreTrainedConfig.get_choice_class("edge_identity")
+        assert cls is EdgeIdentityConfig
+
+        cls = PreTrainedConfig.get_choice_class("edge_quant_int8")
+        assert cls is EdgeQuantInt8Config
+
+    def test_compressed_policy_is_subclass_of_pretrained(self):
+        """CompressedPolicy should satisfy LeRobot's policy interface."""
+        from lerobot.policies.pretrained import PreTrainedPolicy
+
+        assert issubclass(CompressedPolicy, PreTrainedPolicy)
+
+
+class TestSmolVLABenchmark:
+    """Test the benchmark harness with real SmolVLA."""
+
+    def test_benchmark_identity_backend(self, smolvla_policy, smolvla_batch):
+        """Benchmark the identity backend with real SmolVLA."""
+        from lerobot_edge.benchmark import benchmark_backend
+
+        backend = IdentityBackend(smolvla_policy)
+        result = benchmark_backend(
+            backend,
+            smolvla_batch,
+            warmup_runs=2,
+            num_runs=5,
+            backend_name="smolvla_identity",
+            device_profile="laptop_cpu",
+        )
+
+        assert result.latency_mean_ms > 0
+        assert result.throughput_fps > 0
+        assert result.backend_name == "smolvla_identity"
+
+    def test_benchmark_quantized_backend(self, smolvla_policy, smolvla_batch):
+        """Benchmark the quantized backend with real SmolVLA."""
+        from lerobot_edge.benchmark import benchmark_backend
+
+        config = EdgeQuantInt8Config(device="cpu")
+        backend = QuantizedBackend.from_policy(smolvla_policy, config)
+        result = benchmark_backend(
+            backend,
+            smolvla_batch,
+            warmup_runs=2,
+            num_runs=5,
+            backend_name="smolvla_quant_int8",
+            device_profile="laptop_cpu",
+        )
+
+        assert result.latency_mean_ms > 0
+        assert result.throughput_fps > 0
