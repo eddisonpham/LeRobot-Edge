@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import time
@@ -12,8 +13,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from lerobot_edge.compression.quantize import QuantizedBackend
-from lerobot_edge.core.base import CompiledBackend, IdentityBackend
+from lerobot_edge.compression.quantize import (
+    HAS_BNB,
+    QuantizedBackend,
+    quantize_4bit,
+    quantize_bnb_fp4,
+    quantize_bnb_int8,
+)
+from lerobot_edge.core.base import CompiledBackend, IdentityBackend, NativePyTorchBackend
 from lerobot_edge.core.configs import EdgeQuantInt8Config
 from lerobot_edge.core.utils import (
     build_dummy_input,
@@ -53,7 +60,11 @@ def _simple_model():
 
 
 DEFAULT_BACKENDS = ["identity", "int8"]
-ALL_BACKENDS = ["identity", "int8", "onnx_fp32", "onnx_int8", "identity_compile", "int8_compile"]
+ALL_BACKENDS = [
+    "identity", "int8", "bnb_int8", "nf4", "bnb_fp4",
+    "onnx_fp32", "onnx_int8",
+    "identity_compile", "int8_compile",
+]
 
 
 def compare_all_backends(
@@ -129,6 +140,24 @@ def compare_all_backends(
         )
         if hasattr(quantized, "_policy"):
             results["int8_compiled"]["memory"] = measure_model_memory(quantized._policy)
+
+    if "bnb_int8" in backends and HAS_BNB:
+        bnb_int8_model = quantize_bnb_int8(copy.deepcopy(model))
+        bnb_int8_backend = NativePyTorchBackend(bnb_int8_model, dev)
+        results["bnb_int8"] = _bench_backend(bnb_int8_backend, dummy_input, warmup, num_runs)
+        results["bnb_int8"]["memory"] = measure_model_memory(bnb_int8_model)
+
+    if "nf4" in backends and HAS_BNB:
+        nf4_model = quantize_4bit(copy.deepcopy(model))
+        nf4_backend = NativePyTorchBackend(nf4_model, dev)
+        results["nf4"] = _bench_backend(nf4_backend, dummy_input, warmup, num_runs)
+        results["nf4"]["memory"] = measure_model_memory(nf4_model)
+
+    if "bnb_fp4" in backends and HAS_BNB:
+        fp4_model = quantize_bnb_fp4(copy.deepcopy(model))
+        fp4_backend = NativePyTorchBackend(fp4_model, dev)
+        results["bnb_fp4"] = _bench_backend(fp4_backend, dummy_input, warmup, num_runs)
+        results["bnb_fp4"]["memory"] = measure_model_memory(fp4_model)
 
     if "onnx_fp32" in backends:
         from lerobot_edge.core.configs import EdgeOnnxFp32Config

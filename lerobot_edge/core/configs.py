@@ -11,6 +11,9 @@ __all__ = [
     "EdgeBaseConfig",
     "EdgeIdentityConfig",
     "EdgeQuantInt8Config",
+    "EdgeQuantBnbInt8Config",
+    "EdgeQuantBnbNf4Config",
+    "EdgeQuantBnbFp4Config",
     "EdgeOnnxFp32Config",
     "EdgeOnnxInt8Config",
     "EdgeDistilledConfig",
@@ -85,6 +88,36 @@ class EdgeQuantInt8Config(EdgeBaseConfig):
     type: str = "edge_quant_int8"
     quantize_dynamic: bool = True
     quantize_bits: int = 8
+
+
+@PreTrainedConfig.register_subclass("edge_quant_bnb_int8")
+@dataclass
+class EdgeQuantBnbInt8Config(EdgeBaseConfig):
+    """bitsandbytes INT8 quantized variant (Linear8bitLt)."""
+
+    type: str = "edge_quant_bnb_int8"
+    quantize_dynamic: bool = False
+    quantize_bits: int = 8
+
+
+@PreTrainedConfig.register_subclass("edge_quant_bnb_nf4")
+@dataclass
+class EdgeQuantBnbNf4Config(EdgeBaseConfig):
+    """bitsandbytes NF4 4-bit quantized variant."""
+
+    type: str = "edge_quant_bnb_nf4"
+    quantize_dynamic: bool = False
+    quantize_bits: int = 4
+
+
+@PreTrainedConfig.register_subclass("edge_quant_bnb_fp4")
+@dataclass
+class EdgeQuantBnbFp4Config(EdgeBaseConfig):
+    """bitsandbytes FP4 4-bit quantized variant."""
+
+    type: str = "edge_quant_bnb_fp4"
+    quantize_dynamic: bool = False
+    quantize_bits: int = 4
 
 
 @PreTrainedConfig.register_subclass("edge_onnx_fp32")

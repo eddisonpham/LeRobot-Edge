@@ -20,6 +20,8 @@ __all__ = [
     "dynamic_int8_quantize",
     "static_int8_quantize",
     "quantize_4bit",
+    "quantize_bnb_int8",
+    "quantize_bnb_fp4",
     "QuantizedBackend",
 ]
 
@@ -281,6 +283,81 @@ def quantize_4bit(model: nn.Module) -> nn.Module:
         return model
 
 
+def quantize_bnb_int8(model: nn.Module) -> nn.Module:
+    if not HAS_BNB:
+        raise ImportError(
+            "bitsandbytes is required for INT8 quantization. Install with: pip install lerobot-edge[quantize]"
+        )
+
+    from bitsandbytes.nn import Linear8bitLt
+
+    linear_layers = [
+        (name, module)
+        for name, module in model.named_modules()
+        if isinstance(module, nn.Linear)
+    ]
+    if not linear_layers:
+        logger.warning("No nn.Linear modules found to quantize.")
+        return model
+
+    modules_dict = dict(model.named_modules())
+    for name, module in linear_layers:
+        parent_name, _, child_name = name.rpartition(".")
+        parent = model if not parent_name else modules_dict[parent_name]
+        new_layer = Linear8bitLt(
+            module.in_features,
+            module.out_features,
+            bias=module.bias is not None,
+            has_fp16_weights=True,
+            threshold=6.0,
+        )
+        new_layer.weight = nn.Parameter(module.weight.float(), requires_grad=False)
+        if module.bias is not None:
+            new_layer.bias = nn.Parameter(module.bias.float(), requires_grad=False)
+        setattr(parent, child_name, new_layer)
+
+    logger.info("bitsandbytes INT8 quantization applied to %d Linear layers.", len(linear_layers))
+    return model
+
+
+def quantize_bnb_fp4(model: nn.Module) -> nn.Module:
+    if not HAS_BNB:
+        raise ImportError(
+            "bitsandbytes is required for FP4 quantization. Install with: pip install lerobot-edge[quantize]"
+        )
+
+    from bitsandbytes.nn.modules import Linear4bit
+
+    linear_layers = [
+        (name, module)
+        for name, module in model.named_modules()
+        if isinstance(module, nn.Linear)
+    ]
+    if not linear_layers:
+        logger.warning("No nn.Linear modules found to quantize.")
+        return model
+
+    modules_dict = dict(model.named_modules())
+    for name, module in linear_layers:
+        parent_name, _, child_name = name.rpartition(".")
+        parent = model if not parent_name else modules_dict[parent_name]
+        new_layer = Linear4bit(
+            module.in_features,
+            module.out_features,
+            bias=module.bias is not None,
+            compute_dtype=module.weight.dtype,
+            compress_statistics=True,
+            quant_type="fp4",
+        )
+        new_layer.weight = nn.Parameter(module.weight, requires_grad=False)
+        if module.bias is not None:
+            new_layer.bias = nn.Parameter(module.bias, requires_grad=False)
+        setattr(parent, child_name, new_layer)
+
+    logger.info("bitsandbytes FP4 quantization applied to %d Linear layers.", len(linear_layers))
+    return model
+
+
 class QuantizedBackend(NativePyTorchBackend):
     def __init__(
         self,
@@ -300,7 +377,18 @@ class QuantizedBackend(NativePyTorchBackend):
     ) -> QuantizedBackend:
         policy.eval()
 
-        if config.quantize_bits == 4:
+        config_type = getattr(config, "type", "")
+
+        if config_type == "edge_quant_bnb_int8":
+            quantized = quantize_bnb_int8(policy)
+            quant_type = "bnb_int8"
+        elif config_type == "edge_quant_bnb_fp4":
+            quantized = quantize_bnb_fp4(policy)
+            quant_type = "bnb_fp4"
+        elif config_type == "edge_quant_bnb_nf4":
+            quantized = quantize_4bit(policy)
+            quant_type = "nf4"
+        elif config.quantize_bits == 4:
             quantized = quantize_4bit(policy)
             quant_type = "4bit"
         elif config.quantize_static and calibration_data is not None:
@@ -337,7 +425,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--method",
-        choices=["dynamic_int8", "static_int8", "4bit"],
+        choices=["dynamic_int8", "static_int8", "4bit", "bnb_int8", "nf4", "bnb_fp4"],
         default="dynamic_int8",
         help="Quantization method (default: dynamic_int8)",
     )
@@ -372,6 +460,12 @@ def main() -> None:
         quantized = static_int8_quantize(policy, calibration_data)
     elif args.method == "4bit":
         quantized = quantize_4bit(policy)
+    elif args.method == "bnb_int8":
+        quantized = quantize_bnb_int8(policy)
+    elif args.method == "nf4":
+        quantized = quantize_4bit(policy)
+    elif args.method == "bnb_fp4":
+        quantized = quantize_bnb_fp4(policy)
     else:
         logger.error("Unknown method: %s", args.method)
         return

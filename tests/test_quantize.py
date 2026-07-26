@@ -7,9 +7,13 @@ import torch
 import torch.nn as nn
 
 from lerobot_edge.compression.quantize import (
+    HAS_BNB,
     HAS_TORCHAO,
     QuantizedBackend,
     dynamic_int8_quantize,
+    quantize_4bit,
+    quantize_bnb_fp4,
+    quantize_bnb_int8,
 )
 from lerobot_edge.core.configs import EdgeQuantInt8Config
 from lerobot_edge.core.utils import measure_model_memory
@@ -171,3 +175,88 @@ class TestQuantizedBackend:
         """QuantizedBackend reset should not raise."""
         backend = QuantizedBackend.from_policy(simple_model, quant_config)
         backend.reset()  # Should not raise
+
+
+class TestBnbInt8Quantization:
+    """Test bitsandbytes INT8 quantization."""
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_bnb_int8_produces_output(self, simple_model):
+        quantized = quantize_bnb_int8(simple_model)
+        x = torch.randn(1, 7)
+        with torch.no_grad():
+            output = quantized(x)
+        assert output.shape == (1, 2)
+        assert not torch.isnan(output).any()
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_bnb_int8_replaces_layers(self, simple_model):
+        from bitsandbytes.nn import Linear8bitLt
+
+        quantized = quantize_bnb_int8(simple_model)
+        bnb_layers = [m for m in quantized.modules() if isinstance(m, Linear8bitLt)]
+        assert len(bnb_layers) == 3
+
+
+class TestBnbFp4Quantization:
+    """Test bitsandbytes FP4 quantization."""
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_bnb_fp4_produces_output(self, simple_model):
+        quantized = quantize_bnb_fp4(simple_model)
+        x = torch.randn(1, 7)
+        with torch.no_grad():
+            output = quantized(x)
+        assert output.shape == (1, 2)
+        assert not torch.isnan(output).any()
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_bnb_fp4_replaces_layers(self, simple_model):
+        from bitsandbytes.nn.modules import Linear4bit
+
+        quantized = quantize_bnb_fp4(simple_model)
+        bnb_layers = [m for m in quantized.modules() if isinstance(m, Linear4bit)]
+        assert len(bnb_layers) == 3
+
+
+class TestNf4Quantization:
+    """Test bitsandbytes NF4 quantization."""
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_nf4_produces_output(self, simple_model):
+        quantized = quantize_4bit(simple_model)
+        x = torch.randn(1, 7)
+        with torch.no_grad():
+            output = quantized(x)
+        assert output.shape == (1, 2)
+        assert not torch.isnan(output).any()
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_nf4_replaces_layers(self, simple_model):
+        from bitsandbytes.nn.modules import Linear4bit
+
+        quantized = quantize_4bit(simple_model)
+        bnb_layers = [m for m in quantized.modules() if isinstance(m, Linear4bit)]
+        assert len(bnb_layers) == 3
+
+
+class TestQuantizationNoLinearLayers:
+    """Test quantization on models without Linear layers."""
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_bnb_int8_no_linear(self):
+        model = nn.Sequential(nn.Conv2d(3, 16, 3), nn.ReLU())
+        result = quantize_bnb_int8(model)
+        assert result is model
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_bnb_fp4_no_linear(self):
+        model = nn.Sequential(nn.Conv2d(3, 16, 3), nn.ReLU())
+        result = quantize_bnb_fp4(model)
+        assert result is model
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_nf4_no_linear(self):
+        model = nn.Sequential(nn.Conv2d(3, 16, 3), nn.ReLU())
+        result = quantize_4bit(model)
+        assert result is model
