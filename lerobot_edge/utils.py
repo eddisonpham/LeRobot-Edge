@@ -7,6 +7,13 @@ import subprocess
 import torch
 import torch.nn as nn
 
+__all__ = [
+    "get_git_commit_hash",
+    "measure_model_memory",
+    "measure_peak_memory_mb",
+    "sigmoid_scalar",
+]
+
 
 def get_git_commit_hash() -> str:
     """Get the current git commit hash."""
@@ -49,14 +56,6 @@ def measure_peak_memory_mb() -> float:
             return usage.ru_maxrss / 1024
         except (ImportError, AttributeError):
             return 0.0
-
-
-__all__ = [
-    "get_git_commit_hash",
-    "measure_model_memory",
-    "measure_peak_memory_mb",
-    "sigmoid_scalar",
-]
 
 
 def sigmoid_scalar(x: float) -> float:
