@@ -81,15 +81,26 @@ def build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torc
             shape = list(feature.shape) if hasattr(feature, "shape") else [1, 3, 224, 224]
             if len(shape) == 0:
                 shape = [1]
-            elif len(shape) == 1 and shape[0] != 1:
+            elif shape[0] != 1:
                 shape.insert(0, 1)
-            dummy_input[name] = torch.randn(shape, device=device)
+
+            if "language" in name and "tokens" in name:
+                dummy_input[name] = torch.randint(0, 32000, shape, device=device)
+            elif "language" in name and "attention_mask" in name:
+                dummy_input[name] = torch.ones(shape, dtype=torch.bool, device=device)
+            else:
+                dummy_input[name] = torch.randn(shape, device=device)
 
     if not dummy_input:
         dummy_input = {
             "observation.images.front": torch.randn(1, 3, 224, 224, device=device),
             "observation.state": torch.randn(1, 2, device=device),
         }
+
+    policy_name = type(policy).__name__
+    if policy_name == "SmolVLAPolicy" and "observation.language.tokens" not in dummy_input:
+        dummy_input["observation.language.tokens"] = torch.randint(0, 32000, (1, 16), device=device)
+        dummy_input["observation.language.attention_mask"] = torch.ones(1, 16, dtype=torch.bool, device=device)
 
     return dummy_input
 
