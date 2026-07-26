@@ -15,7 +15,11 @@ from lerobot_edge.compression.quantize import (
     quantize_bnb_fp4,
     quantize_bnb_int8,
 )
-from lerobot_edge.core.configs import EdgeQuantInt8Config
+from lerobot_edge.core.configs import (
+    EdgeQuantBnbInt8Config,
+    EdgeQuantBnbNf4Config,
+    EdgeQuantInt8Config,
+)
 from lerobot_edge.core.utils import measure_model_memory
 
 # ---------------------------------------------------------------------------
@@ -175,6 +179,18 @@ class TestQuantizedBackend:
         """QuantizedBackend reset should not raise."""
         backend = QuantizedBackend.from_policy(simple_model, quant_config)
         backend.reset()  # Should not raise
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_from_policy_bnb_int8_routing(self, simple_model):
+        config = EdgeQuantBnbInt8Config(device="cpu")
+        backend = QuantizedBackend.from_policy(simple_model, config)
+        assert backend.quantization_type == "bnb_int8"
+
+    @pytest.mark.skipif(not HAS_BNB, reason="bitsandbytes not installed")
+    def test_from_policy_bnb_nf4_routing(self, simple_model):
+        config = EdgeQuantBnbNf4Config(device="cpu")
+        backend = QuantizedBackend.from_policy(simple_model, config)
+        assert backend.quantization_type == "nf4"
 
 
 class TestBnbInt8Quantization:

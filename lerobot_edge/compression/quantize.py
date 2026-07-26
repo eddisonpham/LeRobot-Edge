@@ -289,7 +289,12 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
             "bitsandbytes is required for INT8 quantization. Install with: pip install lerobot-edge[quantize]"
         )
 
-    from bitsandbytes.nn import Linear8bitLt
+    try:
+        from bitsandbytes.nn import Linear8bitLt
+    except ImportError as e:
+        raise ImportError(
+            "bitsandbytes version too old: Linear8bitLt not found. Upgrade with: pip install --upgrade bitsandbytes"
+        ) from e
 
     linear_layers = [
         (name, module)
