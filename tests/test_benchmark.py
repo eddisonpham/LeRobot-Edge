@@ -10,17 +10,19 @@ import pytest
 import torch
 import torch.nn as nn
 
-from lerobot_edge.benchmark import (
+from lerobot_edge.evaluation.benchmark import (
     BenchmarkResult,
     benchmark_backend,
     compare_results,
-    get_git_commit_hash,
     load_results,
+)
+from lerobot_edge.core.utils import (
+    get_git_commit_hash,
     measure_model_memory,
     measure_peak_memory_mb,
 )
-from lerobot_edge.base import NativePyTorchBackend, _PlaceholderBackend
-from lerobot_edge.configs import EdgeIdentityConfig
+from lerobot_edge.core.base import NativePyTorchBackend, _PlaceholderBackend
+from lerobot_edge.core.configs import EdgeIdentityConfig
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +266,7 @@ class TestResultIO:
             path = Path(tmpdir) / "results.json"
 
             # Save
-            from lerobot_edge.benchmark import _save_results_json
+            from lerobot_edge.evaluation.benchmark import _save_results_json
             _save_results_json(results, path)
             assert path.exists()
 

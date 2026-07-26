@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lerobot_edge.monitoring import ExperimentTracker, TrackConfig
+from lerobot_edge.tracking.tracker import ExperimentTracker, TrackConfig
 
 
 class TestTrackConfig:

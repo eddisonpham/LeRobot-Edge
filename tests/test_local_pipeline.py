@@ -11,21 +11,22 @@ import tempfile
 import pytest
 import torch
 
-from lerobot_edge.base import CompressedPolicy, IdentityBackend, NativePyTorchBackend
-from lerobot_edge.configs import (
+from lerobot_edge.core.base import CompressedPolicy, IdentityBackend, NativePyTorchBackend
+from lerobot_edge.core.configs import (
     EdgeBaseConfig,
     EdgeIdentityConfig,
     EdgeQuantInt8Config,
 )
-from lerobot_edge.quantize import (
+from lerobot_edge.compression.quantize import (
+    HAS_TORCHAO,
     dynamic_int8_quantize,
     static_int8_quantize,
     QuantizedBackend,
-    measure_model_memory,
 )
+from lerobot_edge.core.utils import measure_model_memory
 from test_models import SimpleCNNPolicy
-from lerobot_edge.benchmark import benchmark_backend, BenchmarkResult
-from lerobot_edge.router import ConfidenceRouter
+from lerobot_edge.evaluation.benchmark import benchmark_backend, BenchmarkResult
+from lerobot_edge.core.router import ConfidenceRouter
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +64,7 @@ def quant_int8_config() -> EdgeQuantInt8Config:
 class TestQuantizationLocal:
     """Test quantization using the lightweight SimpleCNNPolicy."""
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_dynamic_int8_quantize(self, simple_cnn):
         original_mem = measure_model_memory(simple_cnn)
         quantized = dynamic_int8_quantize(simple_cnn)
@@ -71,6 +73,7 @@ class TestQuantizationLocal:
         assert quantized is not None
         assert quantized_mem["total_mb"] <= original_mem["total_mb"] * 1.1
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_inference(self, simple_cnn, simple_cnn_batch):
         quantized = dynamic_int8_quantize(simple_cnn)
         backend = NativePyTorchBackend(quantized, torch.device("cpu"))
@@ -82,6 +85,7 @@ class TestQuantizationLocal:
         assert action.numel() > 0
         assert not torch.isnan(action).any()
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_backend_from_policy(self, simple_cnn, simple_cnn_batch):
         config = EdgeQuantInt8Config(device="cpu")
         backend = QuantizedBackend.from_policy(simple_cnn, config)
@@ -91,6 +95,7 @@ class TestQuantizationLocal:
         assert isinstance(action, torch.Tensor)
         assert not torch.isnan(action).any()
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_memory_reduction(self, simple_cnn):
         original = measure_model_memory(simple_cnn)
         quantized = dynamic_int8_quantize(simple_cnn)
@@ -100,6 +105,7 @@ class TestQuantizationLocal:
         print(f"\nMemory: {original['total_mb']:.2f} MB -> {quantized_mem['total_mb']:.2f} MB ({reduction_pct:.1f}% reduction)")
         assert reduction_pct >= 0
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_static_int8_quantize(self, simple_cnn):
         calibration_data = {
             "observation.images.front": torch.randn(1, 3, 224, 224),
@@ -110,6 +116,7 @@ class TestQuantizationLocal:
         )
         assert quantized is not None
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_multiple_quantize_cycles(self, simple_cnn):
         """Verify quantization is idempotent."""
         q1 = dynamic_int8_quantize(simple_cnn)
@@ -142,6 +149,7 @@ class TestBenchmarkLocal:
         assert result.throughput_fps > 0
         assert result.backend_name == "simple_cnn_identity"
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_benchmark_quantized(self, simple_cnn, simple_cnn_batch):
         config = EdgeQuantInt8Config(device="cpu")
         backend = QuantizedBackend.from_policy(simple_cnn, config)
@@ -157,6 +165,7 @@ class TestBenchmarkLocal:
         assert result.latency_mean_ms > 0
         assert result.throughput_fps > 0
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_benchmark_compare(self, simple_cnn, simple_cnn_batch):
         id_backend = IdentityBackend(simple_cnn)
         id_result = benchmark_backend(
@@ -211,6 +220,7 @@ class TestCompressedPolicyLocal:
         assert isinstance(action, torch.Tensor)
         assert not torch.isnan(action).any()
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_wrapper(self, simple_cnn, simple_cnn_batch, quant_int8_config):
         backend = QuantizedBackend.from_policy(simple_cnn, quant_int8_config)
         policy = CompressedPolicy(config=quant_int8_config, backend=backend)

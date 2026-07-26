@@ -37,6 +37,7 @@ class TestTorchaoCodePaths:
         except ImportError:
             assert HAS_TORCHAO is False
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_dynamic_int8_quantize_works(self, simple_model):
         quantized = dynamic_int8_quantize(simple_model)
         assert quantized is not None
@@ -46,6 +47,7 @@ class TestTorchaoCodePaths:
         assert output.shape == (1, 2)
         assert not torch.isnan(output).any()
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_static_int8_quantize_works(self, simple_model):
         calibration_data = {"input": torch.randn(1, 7)}
         quantized = static_int8_quantize(simple_model, calibration_data, num_calibration_steps=5)
@@ -56,12 +58,14 @@ class TestTorchaoCodePaths:
         assert output.shape == (1, 2)
         assert not torch.isnan(output).any()
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_dynamic_int8_produces_different_model(self, simple_model):
         original_params = list(simple_model.parameters())
         quantized = dynamic_int8_quantize(simple_model)
         quantized_params = list(quantized.parameters())
         assert len(original_params) == len(quantized_params)
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_static_int8_produces_different_model(self, simple_model):
         calibration_data = {"input": torch.randn(1, 7)}
         quantized = static_int8_quantize(simple_model, calibration_data, num_calibration_steps=5)
@@ -78,11 +82,3 @@ class TestTorchaoCodePaths:
         assert QuantizedLinear is not None
         assert StaticQuantConfig is not None
 
-    @pytest.mark.skipif(HAS_TORCHAO, reason="torchao is installed")
-    def test_legacy_fallback_works(self, simple_model):
-        quantized = dynamic_int8_quantize(simple_model)
-        assert quantized is not None
-        x = torch.randn(1, 7)
-        with torch.no_grad():
-            output = quantized(x)
-        assert output.shape == (1, 2)

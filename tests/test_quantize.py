@@ -6,12 +6,13 @@ import pytest
 import torch
 import torch.nn as nn
 
-from lerobot_edge.quantize import (
+from lerobot_edge.compression.quantize import (
+    HAS_TORCHAO,
     dynamic_int8_quantize,
-    measure_model_memory,
     QuantizedBackend,
 )
-from lerobot_edge.configs import EdgeQuantInt8Config
+from lerobot_edge.core.utils import measure_model_memory
+from lerobot_edge.core.configs import EdgeQuantInt8Config
 
 
 # ---------------------------------------------------------------------------
@@ -63,11 +64,13 @@ def quant_config() -> EdgeQuantInt8Config:
 class TestDynamicInt8Quantization:
     """Test dynamic INT8 quantization."""
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantize_returns_model(self, simple_model):
         """Quantization should return a model."""
         quantized = dynamic_int8_quantize(simple_model)
         assert quantized is not None
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_model_produces_output(self, simple_model):
         """Quantized model should produce valid output."""
         quantized = dynamic_int8_quantize(simple_model)
@@ -77,6 +80,7 @@ class TestDynamicInt8Quantization:
         assert output.shape == (1, 2)
         assert not torch.isnan(output).any()
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_model_dtypes(self, simple_model):
         """Quantized model should have quantized weights."""
         quantized = dynamic_int8_quantize(simple_model)
@@ -90,6 +94,7 @@ class TestDynamicInt8Quantization:
         # depending on the model structure, so we just check the model runs
         assert quantized is not None
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantization_reduces_size(self, simple_model):
         """Quantized model should be smaller or equal in memory."""
         original_mem = measure_model_memory(simple_model)
@@ -142,12 +147,14 @@ class TestMeasureModelMemory:
 class TestQuantizedBackend:
     """Test QuantizedBackend functionality."""
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_backend_creation(self, simple_model, quant_config):
         """QuantizedBackend should be creatable from a policy."""
         backend = QuantizedBackend.from_policy(simple_model, quant_config)
         assert backend is not None
         assert backend.quantization_type == "dynamic_int8"
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_backend_predict(self, simple_model, quant_config):
         """QuantizedBackend predict should return valid actions."""
         backend = QuantizedBackend.from_policy(simple_model, quant_config)
@@ -156,11 +163,13 @@ class TestQuantizedBackend:
         assert isinstance(result, torch.Tensor)
         assert result.shape == (1, 2)
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_backend_device(self, simple_model, quant_config):
         """QuantizedBackend should report correct device."""
         backend = QuantizedBackend.from_policy(simple_model, quant_config)
         assert backend.device == torch.device("cpu")
 
+    @pytest.mark.skipif(not HAS_TORCHAO, reason="torchao not installed")
     def test_quantized_backend_reset(self, simple_model, quant_config):
         """QuantizedBackend reset should not raise."""
         backend = QuantizedBackend.from_policy(simple_model, quant_config)

@@ -9,7 +9,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from lerobot_edge.configs import EdgeOnnxFp32Config
+from lerobot_edge.core.configs import EdgeOnnxFp32Config
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ class TestOnnxExport:
     )
     def test_export_creates_file(self, simple_policy, onnx_config):
         """ONNX export should create a file."""
-        from lerobot_edge.export_onnx import export_policy_to_onnx
+        from lerobot_edge.export.onnx import export_policy_to_onnx
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.onnx"
@@ -101,7 +101,7 @@ class TestOnnxExport:
     )
     def test_export_validates_model(self, simple_policy, onnx_config):
         """Exported ONNX model should pass validation."""
-        from lerobot_edge.export_onnx import export_policy_to_onnx, validate_onnx_model
+        from lerobot_edge.export.onnx import export_policy_to_onnx, validate_onnx_model
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.onnx"
@@ -127,7 +127,7 @@ class TestOnnxRuntimeBackend:
     )
     def test_backend_predict(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend should produce valid predictions."""
-        from lerobot_edge.export_onnx import export_policy_to_onnx, OnnxRuntimeBackend
+        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.onnx"
@@ -151,7 +151,7 @@ class TestOnnxRuntimeBackend:
     )
     def test_backend_reset(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend reset should not raise."""
-        from lerobot_edge.export_onnx import export_policy_to_onnx, OnnxRuntimeBackend
+        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.onnx"
@@ -171,7 +171,7 @@ class TestOnnxRuntimeBackend:
     )
     def test_backend_properties(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend should report correct properties."""
-        from lerobot_edge.export_onnx import export_policy_to_onnx, OnnxRuntimeBackend
+        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "model.onnx"

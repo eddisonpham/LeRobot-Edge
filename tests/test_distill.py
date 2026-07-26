@@ -7,8 +7,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from lerobot_edge.distill import DistillationLoss, DistilledBackend, distill
-from lerobot_edge.configs import EdgeDistilledConfig
+from lerobot_edge.compression.distill import DistillationLoss, DistilledBackend, distill
+from lerobot_edge.core.configs import EdgeDistilledConfig
 
 
 # ---------------------------------------------------------------------------

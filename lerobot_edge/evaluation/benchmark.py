@@ -248,7 +248,7 @@ def main() -> None:
 
     from lerobot.policies.factory import make_policy, make_policy_config
     from lerobot_edge.core.base import IdentityBackend, NativePyTorchBackend
-    from lerobot_edge.quantize import QuantizedBackend
+    from lerobot_edge.compression.quantize import QuantizedBackend
     from lerobot_edge.core.configs import (
         EdgeIdentityConfig,
         EdgeQuantInt8Config,

@@ -6,8 +6,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from lerobot_edge.router import ConfidenceRouter
-from lerobot_edge.base import NativePyTorchBackend
+from lerobot_edge.core.router import ConfidenceRouter
+from lerobot_edge.core.base import NativePyTorchBackend
 
 
 # ---------------------------------------------------------------------------

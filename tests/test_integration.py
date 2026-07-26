@@ -19,22 +19,22 @@ import pytest
 import torch
 import torch.nn as nn
 
-from lerobot_edge.base import (
+from lerobot_edge.core.base import (
     CompressedPolicy,
     IdentityBackend,
     NativePyTorchBackend,
 )
-from lerobot_edge.configs import (
+from lerobot_edge.core.configs import (
     EdgeIdentityConfig,
     EdgeQuantInt8Config,
     EdgeOnnxFp32Config,
     EdgeOnnxInt8Config,
 )
-from lerobot_edge.quantize import (
+from lerobot_edge.compression.quantize import (
     dynamic_int8_quantize,
     QuantizedBackend,
-    measure_model_memory,
 )
+from lerobot_edge.core.utils import measure_model_memory
 
 # ---------------------------------------------------------------------------
 # Markers for skipping tests
@@ -230,7 +230,7 @@ class TestSmolVLAPluginRegistration:
     def test_config_class_retrievable(self):
         """Config classes should be retrievable from registry."""
         from lerobot.configs import PreTrainedConfig
-        from lerobot_edge.configs import EdgeIdentityConfig, EdgeQuantInt8Config
+        from lerobot_edge.core.configs import EdgeIdentityConfig, EdgeQuantInt8Config
 
         cls = PreTrainedConfig.get_choice_class("edge_identity")
         assert cls is EdgeIdentityConfig
@@ -250,7 +250,7 @@ class TestSmolVLABenchmark:
 
     def test_benchmark_identity_backend(self, smolvla_policy, smolvla_batch):
         """Benchmark the identity backend with real SmolVLA."""
-        from lerobot_edge.benchmark import benchmark_backend
+        from lerobot_edge.evaluation.benchmark import benchmark_backend
 
         backend = IdentityBackend(smolvla_policy)
         result = benchmark_backend(
@@ -268,7 +268,7 @@ class TestSmolVLABenchmark:
 
     def test_benchmark_quantized_backend(self, smolvla_policy, smolvla_batch):
         """Benchmark the quantized backend with real SmolVLA."""
-        from lerobot_edge.benchmark import benchmark_backend
+        from lerobot_edge.evaluation.benchmark import benchmark_backend
 
         config = EdgeQuantInt8Config(device="cpu")
         backend = QuantizedBackend.from_policy(smolvla_policy, config)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from dataclasses import fields
 
-from lerobot_edge.configs import (
+from lerobot_edge.core.configs import (
     EdgeBaseConfig,
     EdgeIdentityConfig,
     EdgeQuantInt8Config,

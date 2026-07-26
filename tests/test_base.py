@@ -6,14 +6,14 @@ import pytest
 import torch
 import torch.nn as nn
 
-from lerobot_edge.base import (
+from lerobot_edge.core.base import (
     CompressedPolicy,
     DeploymentBackend,
     IdentityBackend,
     NativePyTorchBackend,
     _PlaceholderBackend,
 )
-from lerobot_edge.configs import EdgeBaseConfig, EdgeIdentityConfig
+from lerobot_edge.core.configs import EdgeBaseConfig, EdgeIdentityConfig
 
 
 # ---------------------------------------------------------------------------

@@ -162,16 +162,7 @@ def dynamic_int8_quantize(model: nn.Module) -> nn.Module:
             logger.warning("Dynamic INT8 quantization failed: %s. Returning original.", e)
             return model
 
-    logger.warning("torchao not installed, falling back to torch.ao.quantization")
-    try:
-        quantized_model = torch.quantization.quantize_dynamic(
-            model, {nn.Linear}, dtype=torch.qint8,
-        )
-        logger.info("Dynamic INT8 quantization applied to %d Linear layers.", len(quantizable))
-        return quantized_model
-    except Exception as e:
-        logger.warning("Dynamic INT8 quantization failed: %s. Returning original.", e)
-        return model
+    raise ImportError("torchao is required for dynamic INT8 quantization. Install with: pip install torchao")
 
 
 def static_int8_quantize(
@@ -221,17 +212,9 @@ def static_int8_quantize(
             logger.info("Static INT8 quantization applied successfully.")
             return model
         except Exception as e:
-            logger.warning("torchao static quantization failed: %s. Falling back to legacy.", e)
+            raise RuntimeError(f"torchao static quantization failed: {e}") from e
 
-    logger.warning("torchao not installed, falling back to torch.ao.quantization")
-    model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-    model_prepared = torch.quantization.prepare(model, inplace=False)
-    with torch.no_grad():
-        for _ in range(num_calibration_steps):
-            model_prepared(*tensors)
-    quantized_model = torch.quantization.convert(model_prepared, inplace=False)
-    logger.info("Static INT8 quantization applied (legacy backend).")
-    return quantized_model
+    raise ImportError("torchao is required for static INT8 quantization. Install with: pip install torchao")
 
 
 def quantize_4bit(model: nn.Module) -> nn.Module:

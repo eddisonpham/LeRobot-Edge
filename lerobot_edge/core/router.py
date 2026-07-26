@@ -9,7 +9,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from lerobot_edge.base import DeploymentBackend
+from lerobot_edge.core.base import DeploymentBackend
 
 logger = logging.getLogger(__name__)
 

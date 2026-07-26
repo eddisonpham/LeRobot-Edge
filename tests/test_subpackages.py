@@ -175,32 +175,3 @@ class TestMonitoringSubpackage:
         from lerobot_edge.tracking import ExperimentTracker, TrackConfig
         assert ExperimentTracker is not None
 
-
-class TestBackwardCompatWrappers:
-    def test_base_wrapper(self):
-        from lerobot_edge.base import CompressedPolicy, DeploymentBackend
-        assert CompressedPolicy is not None
-
-    def test_configs_wrapper(self):
-        from lerobot_edge.configs import EdgeQuantInt8Config
-        assert EdgeQuantInt8Config.type == "edge_quant_int8"
-
-    def test_quantize_wrapper(self):
-        from lerobot_edge.quantize import dynamic_int8_quantize, QuantizedBackend
-        assert callable(dynamic_int8_quantize)
-
-    def test_benchmark_wrapper(self):
-        from lerobot_edge.benchmark import BenchmarkResult, benchmark_backend
-        assert BenchmarkResult is not None
-
-    def test_evaluation_wrapper(self):
-        from lerobot_edge.evaluation import compare_backends
-        assert callable(compare_backends)
-
-    def test_monitoring_wrapper(self):
-        from lerobot_edge.monitoring import ExperimentTracker
-        assert ExperimentTracker is not None
-
-    def test_router_wrapper(self):
-        from lerobot_edge.router import ConfidenceRouter
-        assert ConfidenceRouter is not None
