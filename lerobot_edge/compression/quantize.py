@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import copy
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from lerobot_edge.core.base import DeploymentBackend, NativePyTorchBackend
+from lerobot_edge.core.base import NativePyTorchBackend
 from lerobot_edge.core.configs import EdgeBaseConfig
 from lerobot_edge.core.utils import measure_model_memory
 
@@ -22,31 +25,144 @@ __all__ = [
 ]
 
 try:
+    from torchao.quantization import quantize_ as torchao_quantize
+    from torchao.quantization import Int8DynamicActivationInt8WeightConfig
+    from torchao.quantization.granularity import PerAxis, PerTensor
+    from torchao.quantization.observer import AffineQuantizedMinMaxObserver
+    from torchao.quantization.quant_primitives import MappingType
+    from torchao.quantization.quant_api import _replace_with_custom_fn_if_matches_filter
+    from torchao.core.config import AOBaseConfig
+    from torchao.quantization.transform_module import register_quantize_module_handler
+    from torchao.dtypes import to_affine_quantized_intx_static
+    HAS_TORCHAO = True
+except ImportError:
+    HAS_TORCHAO = False
+
+try:
     import bitsandbytes as bnb
     HAS_BNB = True
 except ImportError:
     HAS_BNB = False
 
-try:
-    import onnxruntime as ort
-    HAS_ORT = True
-except ImportError:
-    HAS_ORT = False
+
+if HAS_TORCHAO:
+    class ObservedLinear(nn.Module):
+        def __init__(
+            self,
+            in_features: int,
+            out_features: int,
+            act_obs: nn.Module,
+            weight_obs: nn.Module,
+            bias: bool = True,
+            device=None,
+            dtype=None,
+        ):
+            super().__init__()
+            self.linear = nn.Linear(in_features, out_features, bias, device, dtype)
+            self.act_obs = act_obs
+            self.weight_obs = weight_obs
+
+        def forward(self, input: torch.Tensor) -> torch.Tensor:
+            observed_input = self.act_obs(input)
+            observed_weight = self.weight_obs(self.linear.weight)
+            return F.linear(observed_input, observed_weight, self.linear.bias)
+
+        @classmethod
+        def from_float(cls, float_linear: nn.Linear, act_obs: nn.Module, weight_obs: nn.Module) -> ObservedLinear:
+            observed_linear = cls(
+                float_linear.in_features,
+                float_linear.out_features,
+                act_obs,
+                weight_obs,
+                float_linear.bias is not None,
+                device=float_linear.weight.device,
+                dtype=float_linear.weight.dtype,
+            )
+            observed_linear.linear.weight = float_linear.weight
+            if float_linear.bias is not None:
+                observed_linear.linear.bias = float_linear.bias
+            return observed_linear
+
+    class QuantizedLinear(nn.Module):
+        def __init__(
+            self,
+            in_features: int,
+            out_features: int,
+            act_obs: nn.Module,
+            weight_obs: nn.Module,
+            weight: torch.Tensor,
+            bias: torch.Tensor | None,
+            target_dtype: torch.dtype,
+        ):
+            super().__init__()
+            self.act_scale, self.act_zero_point = act_obs.calculate_qparams()
+            weight_scale, weight_zero_point = weight_obs.calculate_qparams()
+            assert weight.dim() == 2
+            block_size = (1, weight.shape[1])
+            self.target_dtype = target_dtype
+            self.bias = bias
+            self.qweight = to_affine_quantized_intx_static(
+                weight, weight_scale, weight_zero_point, block_size, self.target_dtype
+            )
+
+        def forward(self, input: torch.Tensor) -> torch.Tensor:
+            block_size = (1,) + input.shape[1:]
+            qinput = to_affine_quantized_intx_static(
+                input,
+                self.act_scale,
+                self.act_zero_point,
+                block_size,
+                self.target_dtype,
+            )
+            return F.linear(qinput, self.qweight, self.bias)
+
+        @classmethod
+        def from_observed(cls, observed_linear: ObservedLinear, target_dtype: torch.dtype) -> QuantizedLinear:
+            return cls(
+                observed_linear.linear.in_features,
+                observed_linear.linear.out_features,
+                observed_linear.act_obs,
+                observed_linear.weight_obs,
+                observed_linear.linear.weight,
+                observed_linear.linear.bias,
+                target_dtype,
+            )
+
+    @dataclass
+    class StaticQuantConfig(AOBaseConfig):
+        target_dtype: torch.dtype = torch.uint8
+
+    @register_quantize_module_handler(StaticQuantConfig)
+    def _apply_static_quant(module: nn.Module, config: StaticQuantConfig) -> QuantizedLinear:
+        return QuantizedLinear.from_observed(module, config.target_dtype)
+
+    def _insert_observers(model: nn.Module, act_obs: nn.Module, weight_obs: nn.Module) -> None:
+        def _is_linear(m: nn.Module, fqn: str) -> bool:
+            return isinstance(m, nn.Linear)
+
+        def replacement_fn(m: nn.Module) -> ObservedLinear:
+            return ObservedLinear.from_float(m, copy.deepcopy(act_obs), copy.deepcopy(weight_obs))
+
+        _replace_with_custom_fn_if_matches_filter(model, replacement_fn, _is_linear)
 
 
 def dynamic_int8_quantize(model: nn.Module) -> nn.Module:
-    """Apply dynamic INT8 quantization to a PyTorch model."""
-    logger.info("Applying dynamic INT8 quantization...")
-
-    quantizable = []
-    for name, module in model.named_modules():
-        if isinstance(module, nn.Linear):
-            quantizable.append((name, module))
-
+    quantizable = [m for _, m in model.named_modules() if isinstance(m, nn.Linear)]
     if not quantizable:
         logger.warning("No nn.Linear modules found to quantize.")
         return model
 
+    if HAS_TORCHAO:
+        try:
+            config = Int8DynamicActivationInt8WeightConfig()
+            torchao_quantize(model, config)
+            logger.info("Dynamic INT8 quantization applied to %d Linear layers.", len(quantizable))
+            return model
+        except Exception as e:
+            logger.warning("Dynamic INT8 quantization failed: %s. Returning original.", e)
+            return model
+
+    logger.warning("torchao not installed, falling back to torch.ao.quantization")
     try:
         quantized_model = torch.quantization.quantize_dynamic(
             model, {nn.Linear}, dtype=torch.qint8,
@@ -63,9 +179,6 @@ def static_int8_quantize(
     calibration_data: dict[str, torch.Tensor],
     num_calibration_steps: int = 100,
 ) -> nn.Module:
-    """Apply static INT8 quantization with calibration data."""
-    logger.info("Applying static INT8 quantization with %d calibration steps...", num_calibration_steps)
-
     if not calibration_data:
         raise ValueError("calibration_data must not be empty")
 
@@ -77,20 +190,51 @@ def static_int8_quantize(
         )
 
     model.eval()
+
+    if HAS_TORCHAO:
+        try:
+            act_obs = AffineQuantizedMinMaxObserver(
+                MappingType.ASYMMETRIC,
+                torch.uint8,
+                granularity=PerTensor(),
+                eps=torch.finfo(torch.float32).eps,
+                scale_dtype=torch.float32,
+                zero_point_dtype=torch.float32,
+            )
+            weight_obs = AffineQuantizedMinMaxObserver(
+                MappingType.ASYMMETRIC,
+                torch.uint8,
+                granularity=PerAxis(axis=0),
+                eps=torch.finfo(torch.float32).eps,
+                scale_dtype=torch.float32,
+                zero_point_dtype=torch.float32,
+            )
+            _insert_observers(model, act_obs, weight_obs)
+
+            logger.info("Calibrating with %d steps...", num_calibration_steps)
+            with torch.no_grad():
+                for _ in range(num_calibration_steps):
+                    model(*tensors)
+
+            is_observed = lambda m, fqn: isinstance(m, ObservedLinear)
+            torchao_quantize(model, StaticQuantConfig(torch.uint8), is_observed)
+            logger.info("Static INT8 quantization applied successfully.")
+            return model
+        except Exception as e:
+            logger.warning("torchao static quantization failed: %s. Falling back to legacy.", e)
+
+    logger.warning("torchao not installed, falling back to torch.ao.quantization")
     model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
     model_prepared = torch.quantization.prepare(model, inplace=False)
-
     with torch.no_grad():
-        for i in range(num_calibration_steps):
+        for _ in range(num_calibration_steps):
             model_prepared(*tensors)
-
     quantized_model = torch.quantization.convert(model_prepared, inplace=False)
-    logger.info("Static INT8 quantization applied successfully after %d calibration steps.", num_calibration_steps)
+    logger.info("Static INT8 quantization applied (legacy backend).")
     return quantized_model
 
 
 def quantize_4bit(model: nn.Module) -> nn.Module:
-    """Apply 4-bit quantization via bitsandbytes."""
     if not HAS_BNB:
         raise ImportError("bitsandbytes is required for 4-bit quantization. Install with: pip install lerobot-edge[quantize]")
 
@@ -110,8 +254,6 @@ def quantize_4bit(model: nn.Module) -> nn.Module:
 
 
 class QuantizedBackend(NativePyTorchBackend):
-    """Deployment backend for quantized PyTorch models."""
-
     def __init__(
         self,
         model: nn.Module,
@@ -128,7 +270,6 @@ class QuantizedBackend(NativePyTorchBackend):
         config: EdgeBaseConfig,
         calibration_data: dict[str, torch.Tensor] | None = None,
     ) -> QuantizedBackend:
-        """Create a QuantizedBackend by quantizing an existing policy."""
         policy.eval()
 
         if config.quantize_bits == 4:
@@ -150,10 +291,9 @@ class QuantizedBackend(NativePyTorchBackend):
 
 
 def main() -> None:
-    """CLI entry point for ``lerobot-edge-quantize``."""
     import argparse
-    from pathlib import Path
     import json
+    from pathlib import Path
 
     parser = argparse.ArgumentParser(description="Quantize a LeRobot policy checkpoint for edge deployment")
     parser.add_argument("--source", type=str, required=True, help="Source policy checkpoint path or HuggingFace Hub ID")
