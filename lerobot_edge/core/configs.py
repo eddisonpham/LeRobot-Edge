@@ -24,6 +24,7 @@ class EdgeBaseConfig(PreTrainedConfig):
     """Base configuration for all lerobot_edge variants."""
 
     source_pretrained_path: str | None = None
+    source_policy_type: str = "smolvla"
     deploy_device: str | None = None
 
     # Quantization

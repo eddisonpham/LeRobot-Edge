@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import copy
+import tempfile
 import logging
 from pathlib import Path
 from typing import Any
@@ -120,7 +121,7 @@ class CompressedPolicy(PreTrainedPolicy):
         try:
             from lerobot.policies.factory import make_policy, make_policy_config
 
-            base_config = make_policy_config("smolvla")
+            base_config = make_policy_config(config.source_policy_type)
             base_config.pretrained_path = source
             base_config.device = str(device)
             policy = make_policy(base_config)
@@ -132,7 +133,7 @@ class CompressedPolicy(PreTrainedPolicy):
         try:
             if isinstance(config, EdgeOnnxInt8Config):
                 from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
-                onnx_path = export_policy_to_onnx(policy, config, Path("/tmp/lerobot_edge_onnx") / "model.onnx")
+                onnx_path = export_policy_to_onnx(policy, config, Path(tempfile.mkdtemp(prefix="lerobot_edge_onnx_")) / "model.onnx")
                 logger.info("Creating OnnxRuntimeBackend from %s", onnx_path)
                 return OnnxRuntimeBackend(str(onnx_path), device=device)
 
@@ -140,7 +141,7 @@ class CompressedPolicy(PreTrainedPolicy):
                 from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
                 export_config = copy.deepcopy(config)
                 export_config.quantize_dynamic = False
-                onnx_path = export_policy_to_onnx(policy, export_config, Path("/tmp/lerobot_edge_onnx") / "model.onnx")
+                onnx_path = export_policy_to_onnx(policy, export_config, Path(tempfile.mkdtemp(prefix="lerobot_edge_onnx_")) / "model.onnx")
                 logger.info("Creating OnnxRuntimeBackend (FP32) from %s", onnx_path)
                 return OnnxRuntimeBackend(str(onnx_path), device=device)
 

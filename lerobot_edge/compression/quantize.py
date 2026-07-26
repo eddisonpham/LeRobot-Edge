@@ -306,7 +306,7 @@ def main() -> None:
 
     from lerobot.policies.factory import make_policy, make_policy_config
 
-    config = make_policy_config("smolvla")
+    config = make_policy_config("smolvla")  # TODO: accept policy type via CLI
     config.pretrained_path = args.source
     config.device = args.device
 

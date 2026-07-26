@@ -258,7 +258,7 @@ def main() -> None:
 
     device = torch.device(args.device_profile)
 
-    config = make_policy_config("smolvla")
+    config = make_policy_config("smolvla")  # TODO: accept policy type via CLI
     config.pretrained_path = args.checkpoint
     config.device = str(device)
 
