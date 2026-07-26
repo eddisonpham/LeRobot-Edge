@@ -266,10 +266,6 @@ def print_comparison(results: dict[str, Any]) -> None:
         )
     print("=" * 80)
 
-    if any(k in backend_results for k in ["dynamic_int8", "onnx_int8"]):
-        print("NOTE: INT8 quantization adds framework dispatch overhead on small/CPU models.")
-        print("      Benefits appear on larger models (>100M params) or with torch.compile.")
-
 
 def main() -> None:
     import argparse
