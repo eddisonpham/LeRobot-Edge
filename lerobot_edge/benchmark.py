@@ -1,11 +1,4 @@
-"""Benchmark harness for lerobot_edge policy variants.
-
-Measures mean/p50/p95 latency per inference, peak memory, throughput
-(inferences/sec) — averaged over enough runs to be stable.
-
-Outputs a single structured JSON/CSV row per (backend, device_profile) combination,
-including reproducibility fields (commit hash, config, timestamp).
-"""
+"""Benchmark harness for lerobot_edge policy variants."""
 
 from __future__ import annotations
 
@@ -36,58 +29,30 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Benchmark result dataclass
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class BenchmarkResult:
     """Single benchmark result for one backend + device profile combination."""
 
-    # Identity
     backend_name: str
     device_profile: str
     git_commit: str
     timestamp: str
-
-    # Configuration
     config: dict[str, Any] = field(default_factory=dict)
-
-    # Latency (ms)
     latency_mean_ms: float = 0.0
     latency_p50_ms: float = 0.0
     latency_p95_ms: float = 0.0
     latency_p99_ms: float = 0.0
     latency_std_ms: float = 0.0
-
-    # Throughput
-    throughput_fps: float = 0.0  # inferences per second
-
-    # Memory
+    throughput_fps: float = 0.0
     peak_memory_mb: float = 0.0
     param_memory_mb: float = 0.0
-
-    # Model info
     num_parameters: int = 0
     model_size_mb: float = 0.0
-
-    # Success rate (from eval)
     success_rate: float | None = None
     eval_episodes: int = 0
-
-    # Metadata
     warmup_runs: int = 0
     benchmark_runs: int = 0
     notes: str = ""
-
-
-
-
-
-# ---------------------------------------------------------------------------
-# Core benchmark functions
-# ---------------------------------------------------------------------------
 
 
 def benchmark_backend(
@@ -100,45 +65,19 @@ def benchmark_backend(
     device_profile: str = "cpu",
     config: EdgeBaseConfig | None = None,
 ) -> BenchmarkResult:
-    """Benchmark a deployment backend.
+    """Benchmark a deployment backend."""
+    logger.info("Benchmarking %s on %s: warmup=%d, runs=%d", backend_name, device_profile, warmup_runs, num_runs)
 
-    Args:
-        backend: The deployment backend to benchmark.
-        dummy_input: Sample input batch for inference.
-        warmup_runs: Number of warmup runs (not counted in results).
-        num_runs: Number of benchmark runs.
-        backend_name: Name identifier for this backend.
-        device_profile: Device profile name (e.g. "laptop_cpu", "cloud_gpu").
-        config: Optional edge configuration.
-
-    Returns:
-        BenchmarkResult with all measurements.
-    """
-    logger.info(
-        "Benchmarking %s on %s: warmup=%d, runs=%d",
-        backend_name,
-        device_profile,
-        warmup_runs,
-        num_runs,
-    )
-
-    # Move input to correct device
     device = backend.device
-    dummy_input = {
-        k: v.to(device) if isinstance(v, torch.Tensor) else v
-        for k, v in dummy_input.items()
-    }
+    dummy_input = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in dummy_input.items()}
 
-    # Warmup
     logger.debug("Running %d warmup iterations...", warmup_runs)
     for _ in range(warmup_runs):
         _ = backend.predict(dummy_input)
 
-    # Benchmark
     latencies_ms: list[float] = []
     peak_mem = 0.0
 
-    # Reset peak memory tracking
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
@@ -156,12 +95,10 @@ def benchmark_backend(
         end_time = time.perf_counter()
         latencies_ms.append((end_time - start_time) * 1000)
 
-        # Track peak memory
         current_mem = measure_peak_memory_mb()
         if current_mem > peak_mem:
             peak_mem = current_mem
 
-    # Compute statistics
     latencies = np.array(latencies_ms)
     latency_mean = float(np.mean(latencies))
     latency_p50 = float(np.percentile(latencies, 50))
@@ -171,7 +108,6 @@ def benchmark_backend(
 
     throughput = 1000.0 / latency_mean if latency_mean > 0 else 0.0
 
-    # Model memory
     if hasattr(backend, '_policy') and hasattr(backend._policy, 'parameters'):
         model_mem = measure_model_memory(backend._policy)
     else:
@@ -197,14 +133,7 @@ def benchmark_backend(
         benchmark_runs=num_runs,
     )
 
-    logger.info(
-        "Benchmark complete: latency=%.2f±%.2f ms (p50=%.2f, p95=%.2f), throughput=%.1f fps",
-        latency_mean,
-        latency_std,
-        latency_p50,
-        latency_p95,
-        throughput,
-    )
+    logger.info("Benchmark complete: latency=%.2f+/- %.2f ms (p50=%.2f, p95=%.2f), throughput=%.1f fps", latency_mean, latency_std, latency_p50, latency_p95, throughput)
 
     return result
 
@@ -217,18 +146,7 @@ def benchmark_policy_variants(
     output_dir: str | Path = "benchmark_results",
     **kwargs: Any,
 ) -> list[BenchmarkResult]:
-    """Benchmark multiple policy variants and save results.
-
-    Args:
-        variants: Dict mapping variant names to backends.
-        dummy_input: Sample input batch.
-        device_profile: Device profile name.
-        output_dir: Directory to save results.
-        **kwargs: Additional arguments passed to benchmark_backend.
-
-    Returns:
-        List of BenchmarkResult objects.
-    """
+    """Benchmark multiple policy variants and save results."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -237,24 +155,14 @@ def benchmark_policy_variants(
     for name, backend in variants.items():
         logger.info("Benchmarking variant: %s", name)
         result = benchmark_backend(
-            backend,
-            dummy_input,
-            backend_name=name,
-            device_profile=device_profile,
-            **kwargs,
+            backend, dummy_input, backend_name=name, device_profile=device_profile, **kwargs,
         )
         results.append(result)
 
-    # Save results
     _save_results_json(results, output_dir / "benchmark_results.json")
     _save_results_csv(results, output_dir / "benchmark_results.csv")
 
     return results
-
-
-# ---------------------------------------------------------------------------
-# Result I/O
-# ---------------------------------------------------------------------------
 
 
 def _save_results_json(results: list[BenchmarkResult], path: Path) -> None:
@@ -285,26 +193,14 @@ def load_results(path: str | Path) -> list[BenchmarkResult]:
     with open(path) as f:
         data = json.load(f)
 
-    results = []
-    for item in data:
-        results.append(BenchmarkResult(**item))
-    return results
-
-
-# ---------------------------------------------------------------------------
-# Comparison utilities
-# ---------------------------------------------------------------------------
+    return [BenchmarkResult(**item) for item in data]
 
 
 def compare_results(
     results: list[BenchmarkResult],
     baseline_name: str = "edge_identity",
 ) -> dict[str, Any]:
-    """Compare benchmark results against a baseline.
-
-    Returns:
-        Dict with comparison metrics for each variant.
-    """
+    """Compare benchmark results against a baseline."""
     baseline = None
     for r in results:
         if r.backend_name == baseline_name:
@@ -331,50 +227,17 @@ def compare_results(
     return comparisons
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
-
-
 def main() -> None:
     """CLI entry point for ``lerobot-edge-benchmark``."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Benchmark lerobot_edge policy variants"
-    )
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        required=True,
-        help="Policy checkpoint path or HuggingFace Hub ID",
-    )
-    parser.add_argument(
-        "--variants",
-        nargs="+",
-        default=["edge_identity"],
-        help="Variants to benchmark (default: edge_identity)",
-    )
-    parser.add_argument(
-        "--device-profile",
-        type=str,
-        default="laptop_cpu",
-        choices=["laptop_cpu", "cloud_gpu", "edge"],
-        help="Device profile (default: laptop_cpu)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="benchmark_results",
-        help="Output directory for results",
-    )
-    parser.add_argument(
-        "--warmup", type=int, default=10, help="Number of warmup runs"
-    )
-    parser.add_argument(
-        "--num-runs", type=int, default=100, help="Number of benchmark runs"
-    )
-
+    parser = argparse.ArgumentParser(description="Benchmark lerobot_edge policy variants")
+    parser.add_argument("--checkpoint", type=str, required=True, help="Policy checkpoint path or HuggingFace Hub ID")
+    parser.add_argument("--variants", nargs="+", default=["edge_identity"], help="Variants to benchmark (default: edge_identity)")
+    parser.add_argument("--device-profile", type=str, default="laptop_cpu", choices=["laptop_cpu", "cloud_gpu", "edge"], help="Device profile (default: laptop_cpu)")
+    parser.add_argument("--output-dir", type=str, default="benchmark_results", help="Output directory for results")
+    parser.add_argument("--warmup", type=int, default=10, help="Number of warmup runs")
+    parser.add_argument("--num-runs", type=int, default=100, help="Number of benchmark runs")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -383,7 +246,6 @@ def main() -> None:
     logger.info("Variants: %s", args.variants)
     logger.info("Device profile: %s", args.device_profile)
 
-    # Load checkpoint via LeRobot's policy factory
     from lerobot.policies.factory import make_policy, make_policy_config
     from lerobot_edge.base import IdentityBackend, NativePyTorchBackend
     from lerobot_edge.quantize import QuantizedBackend
@@ -396,8 +258,6 @@ def main() -> None:
 
     device = torch.device(args.device_profile)
 
-    # Create policy config and load model
-    # We use smolvla config as the base, then load from checkpoint
     config = make_policy_config("smolvla")
     config.pretrained_path = args.checkpoint
     config.device = str(device)
@@ -410,10 +270,8 @@ def main() -> None:
         logger.error("Failed to load policy: %s", e)
         return
 
-    # Build dummy input from policy's expected features
     dummy_input = _build_dummy_input(policy, device)
 
-    # Create backends for each requested variant
     variants: dict[str, NativePyTorchBackend] = {}
     variant_config_map = {
         "edge_identity": EdgeIdentityConfig,
@@ -431,7 +289,6 @@ def main() -> None:
                 edge_config = variant_config_map[variant_name](device=str(device))
                 variants[variant_name] = QuantizedBackend.from_policy(policy, edge_config)
             else:
-                # Default: identity backend
                 logger.warning("Unknown variant '%s', using identity backend", variant_name)
                 variants[variant_name] = IdentityBackend(policy)
         except Exception as e:
@@ -441,55 +298,34 @@ def main() -> None:
         logger.error("No variants to benchmark")
         return
 
-    # Run benchmarks
     results = benchmark_policy_variants(
-        variants,
-        dummy_input,
-        device_profile=args.device_profile,
-        output_dir=args.output_dir,
-        warmup_runs=args.warmup,
-        num_runs=args.num_runs,
+        variants, dummy_input, device_profile=args.device_profile, output_dir=args.output_dir,
+        warmup_runs=args.warmup, num_runs=args.num_runs,
     )
 
-    # Print summary table
     print("\n" + "=" * 80)
     print("BENCHMARK RESULTS")
     print("=" * 80)
     print(f"{'Backend':<25} {'Latency (ms)':<20} {'Throughput (fps)':<20} {'Memory (MB)':<15}")
     print("-" * 80)
     for r in results:
-        print(f"{r.backend_name:<25} {r.latency_mean_ms:>8.2f} ± {r.latency_std_ms:<6.2f} {r.throughput_fps:>12.1f} {r.peak_memory_mb:>10.1f}")
+        print(f"{r.backend_name:<25} {r.latency_mean_ms:>8.2f} +/- {r.latency_std_ms:<6.2f} {r.throughput_fps:>12.1f} {r.peak_memory_mb:>10.1f}")
     print("=" * 80)
     print(f"\nResults saved to {args.output_dir}/")
 
 
 def _build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torch.Tensor]:
     """Build a dummy input batch from policy's expected features."""
-    from lerobot.configs import FeatureType
-
     dummy_input = {}
     if hasattr(policy, 'config') and hasattr(policy.config, 'input_features'):
         for name, feature in policy.config.input_features.items():
-            if feature.type == FeatureType.VISUAL:
-                # Default image shape: (batch, channels, height, width)
-                shape = list(feature.shape) if hasattr(feature, 'shape') else [3, 224, 224]
-                if len(shape) == 3:  # No batch dim
-                    shape.insert(0, 1)
-                dummy_input[name] = torch.randn(shape, device=device)
-            elif feature.type == FeatureType.STATE:
-                shape = list(feature.shape) if hasattr(feature, 'shape') else [7]
-                if len(shape) == 1:  # No batch dim
-                    shape.insert(0, 1)
-                dummy_input[name] = torch.randn(shape, device=device)
-            else:
-                shape = list(feature.shape) if hasattr(feature, 'shape') else [1]
-                if len(shape) == 0:
-                    shape = [1]
-                elif len(shape) == 1 and shape[0] != 1:
-                    shape.insert(0, 1)
-                dummy_input[name] = torch.randn(shape, device=device)
+            shape = list(feature.shape) if hasattr(feature, 'shape') else [1, 3, 224, 224]
+            if len(shape) == 0:
+                shape = [1]
+            elif len(shape) == 1 and shape[0] != 1:
+                shape.insert(0, 1)
+            dummy_input[name] = torch.randn(shape, device=device)
 
-    # Fallback if no features found
     if not dummy_input:
         dummy_input = {
             "observation.images": torch.randn(1, 3, 224, 224, device=device),

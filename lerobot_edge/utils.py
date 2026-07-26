@@ -13,9 +13,7 @@ def get_git_commit_hash() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+            capture_output=True, text=True, timeout=5,
         )
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
@@ -23,12 +21,7 @@ def get_git_commit_hash() -> str:
 
 
 def measure_model_memory(model: nn.Module) -> dict[str, float]:
-    """Measure the memory footprint of a model.
-
-    Returns:
-        Dict with 'param_bytes', 'buffer_bytes', 'total_bytes',
-        'param_mb', 'buffer_mb', 'total_mb', 'num_parameters'.
-    """
+    """Measure the memory footprint of a model."""
     param_bytes = sum(p.nelement() * p.element_size() for p in model.parameters())
     buffer_bytes = sum(b.nelement() * b.element_size() for b in model.buffers())
     total_bytes = param_bytes + buffer_bytes
@@ -53,7 +46,7 @@ def measure_peak_memory_mb() -> float:
         try:
             import resource
             usage = resource.getrusage(resource.RUSAGE_SELF)
-            return usage.ru_maxrss / 1024  # Convert KB to MB on Linux
+            return usage.ru_maxrss / 1024
         except (ImportError, AttributeError):
             return 0.0
 

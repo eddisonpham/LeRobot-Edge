@@ -1,9 +1,4 @@
-"""Edge/cloud confidence-based router (stretch goal).
-
-A simple router that runs the cheap/fast on-device path by default and
-falls back to a larger cloud model when the on-device policy's confidence
-is low.
-"""
+"""Edge/cloud confidence-based router."""
 
 from __future__ import annotations
 
@@ -24,11 +19,7 @@ __all__ = [
 
 
 class ConfidenceRouter:
-    """Routes inference between edge and cloud backends based on confidence.
-
-    Uses the flow-matching / action-head uncertainty as a confidence signal.
-    When confidence falls below a threshold, escalates to the cloud model.
-    """
+    """Routes inference between edge and cloud backends based on confidence."""
 
     def __init__(
         self,
@@ -41,41 +32,25 @@ class ConfidenceRouter:
         self._cloud = cloud_backend
         self._threshold = confidence_threshold
         self._max_escalation_rate = max_escalation_rate
-
-        # Statistics
         self._total_inferences = 0
         self._escalations = 0
 
     def predict(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict[str, Any]]:
-        """Run inference with confidence-based routing.
-
-        Returns:
-            Tuple of (actions, info_dict) where info_dict contains
-            routing metadata (confidence, escalated, etc.).
-        """
+        """Run inference with confidence-based routing."""
         self._total_inferences += 1
 
-        # Run edge model
         edge_actions = self._edge.predict(batch)
-
-        # Compute confidence from action variance
         confidence = self._compute_confidence(edge_actions)
 
-        # Decide whether to escalate
         escalated = False
         if self._cloud is not None and confidence < self._threshold:
-            # Check if escalation rate is within budget
             escalation_rate = self._escalations / max(self._total_inferences, 1)
             if escalation_rate < self._max_escalation_rate:
                 cloud_actions = self._cloud.predict(batch)
                 edge_actions = cloud_actions
                 escalated = True
                 self._escalations += 1
-                logger.debug(
-                    "Escalated to cloud (confidence=%.3f < threshold=%.3f)",
-                    confidence,
-                    self._threshold,
-                )
+                logger.debug("Escalated to cloud (confidence=%.3f < threshold=%.3f)", confidence, self._threshold)
 
         info = {
             "confidence": confidence,
@@ -88,21 +63,16 @@ class ConfidenceRouter:
         return edge_actions, info
 
     def _compute_confidence(self, actions: torch.Tensor) -> float:
-        """Compute confidence from action tensor.
-
-        Higher variance = lower confidence.
-        """
+        """Compute confidence from action variance (lower variance = higher confidence)."""
         if actions.numel() == 0:
             return 1.0
 
-        # Use coefficient of variation as uncertainty measure
         mean = actions.mean()
         std = actions.std()
         if mean.abs() < 1e-8:
             return 1.0
 
         cv = (std / mean.abs()).item()
-        # Convert to confidence (0-1 range) using pure math (no tensor allocation)
         x = -cv * 5 + 2.5
         confidence = 1.0 / (1.0 + math.exp(-x))
         return confidence

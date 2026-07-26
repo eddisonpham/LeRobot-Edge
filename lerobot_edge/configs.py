@@ -1,12 +1,4 @@
-"""Configuration dataclasses for lerobot_edge policy variants.
-
-Each config registers itself with LeRobot's ``PreTrainedConfig`` draccus
-ChoiceRegistry via ``@PreTrainedConfig.register_subclass(name)``.
-
-LeRobot's factory fallback (``_get_policy_cls_from_policy_name``) will
-then discover these configs and dynamically import the matching policy class
-using naming conventions: ``configuration_<type>`` → ``modeling_<type>``.
-"""
+"""Configuration dataclasses for lerobot_edge policy variants."""
 
 from __future__ import annotations
 
@@ -27,47 +19,33 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Base edge config (shared fields)
-# ---------------------------------------------------------------------------
-
 @dataclass
 class EdgeBaseConfig(PreTrainedConfig):
-    """Shared configuration for all lerobot_edge variants.
+    """Base configuration for all lerobot_edge variants."""
 
-    Subclasses must set ``type`` via ``@PreTrainedConfig.register_subclass``.
-    """
-
-    # Path to the original (uncompressed) policy checkpoint.  The edge
-    # variant wraps / transforms this checkpoint.
     source_pretrained_path: str | None = None
-
-    # Device to run inference on (inherited from PreTrainedConfig).
-    # We add a convenience alias used by the benchmark harness.
     deploy_device: str | None = None
 
-    # -- quantization options (used by edge_quant_int8) --
+    # Quantization
     quantize_dynamic: bool = True
     quantize_static: bool = False
-    quantize_bits: int = 8  # 8 or 4
+    quantize_bits: int = 8
 
-    # -- ONNX options (used by edge_onnx_*) --
+    # ONNX
     onnx_opset: int = 17
     onnx_input_names: list[str] = field(default_factory=list)
     onnx_output_names: list[str] = field(default_factory=list)
     onnx_dynamic_axes: dict[str, dict[int, str]] = field(default_factory=dict)
 
-    # -- distillation options (used by edge_distilled_*) --
+    # Distillation
     distill_epochs: int = 10
     distill_lr: float = 1e-4
     distill_temperature: float = 2.0
-    distill_alpha: float = 0.5  # weight for KL vs MSE loss
+    distill_alpha: float = 0.5
 
-    # -- benchmark options --
+    # Benchmark
     benchmark_warmup: int = 10
     benchmark_num_runs: int = 100
-
-    # ---------- required abstract implementations from PreTrainedConfig ----------
 
     @property
     def observation_delta_indices(self) -> list | None:
@@ -82,11 +60,7 @@ class EdgeBaseConfig(PreTrainedConfig):
         return None
 
     def get_optimizer_preset(self) -> Any:
-        return {
-            "optimizer_cls": "AdamW",
-            "lr": 1e-4,
-            "weight_decay": 1e-4,
-        }
+        return {"optimizer_cls": "AdamW", "lr": 1e-4, "weight_decay": 1e-4}
 
     def get_scheduler_preset(self) -> Any | None:
         return None
@@ -95,18 +69,10 @@ class EdgeBaseConfig(PreTrainedConfig):
         pass
 
 
-# ---------------------------------------------------------------------------
-# Concrete registered configs
-# ---------------------------------------------------------------------------
-
 @PreTrainedConfig.register_subclass("edge_identity")
 @dataclass
 class EdgeIdentityConfig(EdgeBaseConfig):
-    """Identity passthrough – wraps the original policy unchanged.
-
-    This variant proves the plugin registration hook works end-to-end
-    without any actual compression or transformation.
-    """
+    """Passthrough wrapper — no compression."""
 
     type: str = "edge_identity"
 

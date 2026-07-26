@@ -1,17 +1,8 @@
-"""CompressedPolicy wrapper and deployment backend interface.
-
-``CompressedPolicy`` wraps any deployment backend (quantized weights, ONNX
-Runtime session, TensorRT engine, distilled student model) behind the exact
-call signature that LeRobot's eval/record scripts expect from a native policy.
-
-Every edge variant ultimately produces a ``CompressedPolicy`` instance that
-is registered and handed to the eval loop.
-"""
+"""CompressedPolicy wrapper and deployment backend interface."""
 
 from __future__ import annotations
 
 import abc
-import time
 import logging
 from typing import Any
 
@@ -31,43 +22,27 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# DeploymentBackend interface
-# ---------------------------------------------------------------------------
-
 class DeploymentBackend(abc.ABC):
-    """Abstract interface for a deployment backend.
-
-    Each backend wraps a model (quantized, ONNX, TensorRT, distilled) and
-    exposes a ``predict`` method that mirrors ``PreTrainedPolicy.select_action``.
-    """
+    """Abstract interface for a deployment backend."""
 
     @abc.abstractmethod
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Run inference on a batch and return action tensor."""
         ...
 
     @abc.abstractmethod
     def reset(self) -> None:
-        """Reset any internal state (e.g. action caches)."""
         ...
 
     @property
     @abc.abstractmethod
     def device(self) -> torch.device:
-        """Return the device the backend runs on."""
         ...
 
     @property
     @abc.abstractmethod
     def parameters(self) -> list[nn.Parameter]:
-        """Return model parameters (empty for non-trainable backends)."""
         ...
 
-
-# ---------------------------------------------------------------------------
-# NativePyTorchBackend – wraps an existing nn.Module policy
-# ---------------------------------------------------------------------------
 
 class NativePyTorchBackend(DeploymentBackend):
     """Wraps an existing PyTorch policy module as a deployment backend."""
@@ -94,33 +69,13 @@ class NativePyTorchBackend(DeploymentBackend):
         return list(self._policy.parameters())
 
 
-# ---------------------------------------------------------------------------
-# IdentityBackend – passthrough, no transformation
-# ---------------------------------------------------------------------------
-
 class IdentityBackend(NativePyTorchBackend):
-    """Identity backend – passes through to the original policy unchanged.
+    """Passthrough backend — no transformation applied."""
 
-    Used by the ``edge_identity`` variant to prove the plugin hook works.
-    """
-
-
-# ---------------------------------------------------------------------------
-# CompressedPolicy – the registered LeRobot policy
-# ---------------------------------------------------------------------------
 
 class CompressedPolicy(PreTrainedPolicy):
-    """Wraps a ``DeploymentBackend`` behind LeRobot's policy interface.
+    """Wraps a DeploymentBackend behind LeRobot's policy interface."""
 
-    This class satisfies the abstract contract of ``PreTrainedPolicy`` by
-    delegating ``select_action``, ``forward``, ``reset``, and
-    ``predict_action_chunk`` to the underlying backend.
-
-    Subclasses must define ``config_class`` and ``name`` class attributes
-    (enforced by ``PreTrainedPolicy.__init_subclass__``).
-    """
-
-    # These must be set by concrete subclasses
     config_class = EdgeBaseConfig  # type: ignore[assignment]
     name = "edge_compressed"  # type: ignore[assignment]
 
@@ -132,9 +87,6 @@ class CompressedPolicy(PreTrainedPolicy):
         pretrained_name_or_path: str | None = None,
         **kwargs: Any,
     ) -> None:
-        # If a backend is not provided yet, build one lazily from the config.
-        # This path is hit when LeRobot's factory calls
-        # ``policy_cls(config=cfg)`` without a pre-built backend.
         super().__init__(config)
 
         if backend is not None:
@@ -144,63 +96,42 @@ class CompressedPolicy(PreTrainedPolicy):
                 pretrained_name_or_path, config
             )
         else:
-            # Default: create an empty backend placeholder (for registration testing)
             self._backend = _PlaceholderBackend(config.device or "cpu")
 
         self._action_cache: torch.Tensor | None = None
         self._cache_idx: int = 0
 
-    # -- factory that concrete subclasses override to build their backend -----
-
     def _build_backend_from_checkpoint(
         self, path: str, config: EdgeBaseConfig
     ) -> DeploymentBackend:
-        """Build a backend from a saved checkpoint.  Override in subclasses."""
         raise NotImplementedError(
             f"{self.__class__.__name__} must implement _build_backend_from_checkpoint"
         )
 
-    # -- PreTrainedPolicy interface -------------------------------------------
-
     def select_action(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Select a single action for the current timestep.
-
-        If the backend produces an action chunk, cache subsequent actions.
-        """
         if self._action_cache is not None and self._cache_idx < self._action_cache.shape[0]:
             action = self._action_cache[self._cache_idx]
             self._cache_idx += 1
             return action
 
-        # No cache or cache exhausted – run inference
         self._action_cache = self.predict_action_chunk(batch)
         self._cache_idx = 1
         return self._action_cache[0]
 
     def predict_action_chunk(self, batch: dict[str, torch.Tensor], **kwargs: Any) -> torch.Tensor:
-        """Return an action chunk (sequence of future actions)."""
         return self._backend.predict(batch)
 
     def forward(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict | None]:
-        """Forward pass for training (returns loss, info).
-
-        For compressed/deployed policies this is typically not used during
-        training but must be implemented to satisfy the abstract interface.
-        """
         actions = self._backend.predict(batch)
-        # For a deployed policy, we can't compute a meaningful loss without
-        # ground-truth targets.  Return a differentiable zero loss.
         loss = torch.tensor(0.0, device=self.device, requires_grad=True)
         return loss, {"actions": actions}
 
     def reset(self) -> None:
-        """Reset internal state (clear action cache)."""
         self._action_cache = None
         self._cache_idx = 0
         self._backend.reset()
 
     def get_optim_params(self) -> dict[str, Any]:
-        """Return parameters for the optimizer."""
         return {"params": self._backend.parameters}
 
     @property
@@ -208,18 +139,13 @@ class CompressedPolicy(PreTrainedPolicy):
         return self._backend.device
 
 
-# ---------------------------------------------------------------------------
-# Placeholder backend (for registration testing only)
-# ---------------------------------------------------------------------------
-
 class _PlaceholderBackend(DeploymentBackend):
-    """A minimal backend that returns zeros – used for plugin registration tests."""
+    """Minimal backend that returns zeros — used for registration tests."""
 
     def __init__(self, device: str | torch.device = "cpu") -> None:
         self._device = torch.device(device)
 
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        # Find any action-shaped output in the batch to determine shape
         for key, val in batch.items():
             if "action" in key.lower():
                 return torch.zeros(val.shape, device=self._device)
