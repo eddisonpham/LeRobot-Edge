@@ -41,3 +41,6 @@ config_src.py
 
 # Planning documents (not part of the package)
 vla-edge-plan/
+
+# Generated diagrams
+docs/diagrams/
