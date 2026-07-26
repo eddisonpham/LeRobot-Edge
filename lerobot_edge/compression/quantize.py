@@ -231,13 +231,13 @@ def static_int8_quantize(
     )
 
 
-def quantize_4bit(model: nn.Module) -> nn.Module:
+def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
     if not HAS_BNB:
         raise ImportError(
             "bitsandbytes is required for 4-bit quantization. Install with: pip install lerobot-edge[quantize]"
         )
 
-    logger.info("Applying 4-bit quantization via bitsandbytes...")
+    logger.info("Applying %s 4-bit quantization via bitsandbytes...", quant_type.upper())
 
     try:
         from bitsandbytes.nn.modules import Linear4bit
@@ -266,7 +266,7 @@ def quantize_4bit(model: nn.Module) -> nn.Module:
                 bias=module.bias is not None,
                 compute_dtype=module.weight.dtype,
                 compress_statistics=True,
-                quant_type="nf4",
+                quant_type=quant_type,
             )
             new_layer.weight = nn.Parameter(module.weight, requires_grad=False)
             if module.bias is not None:
@@ -326,41 +326,7 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
 
 
 def quantize_bnb_fp4(model: nn.Module) -> nn.Module:
-    if not HAS_BNB:
-        raise ImportError(
-            "bitsandbytes is required for FP4 quantization. Install with: pip install lerobot-edge[quantize]"
-        )
-
-    from bitsandbytes.nn.modules import Linear4bit
-
-    linear_layers = [
-        (name, module)
-        for name, module in model.named_modules()
-        if isinstance(module, nn.Linear)
-    ]
-    if not linear_layers:
-        logger.warning("No nn.Linear modules found to quantize.")
-        return model
-
-    modules_dict = dict(model.named_modules())
-    for name, module in linear_layers:
-        parent_name, _, child_name = name.rpartition(".")
-        parent = model if not parent_name else modules_dict[parent_name]
-        new_layer = Linear4bit(
-            module.in_features,
-            module.out_features,
-            bias=module.bias is not None,
-            compute_dtype=module.weight.dtype,
-            compress_statistics=True,
-            quant_type="fp4",
-        )
-        new_layer.weight = nn.Parameter(module.weight, requires_grad=False)
-        if module.bias is not None:
-            new_layer.bias = nn.Parameter(module.bias, requires_grad=False)
-        setattr(parent, child_name, new_layer)
-
-    logger.info("bitsandbytes FP4 quantization applied to %d Linear layers.", len(linear_layers))
-    return model
+    return quantize_4bit(model, quant_type="fp4")
 
 
 class QuantizedBackend(NativePyTorchBackend):
