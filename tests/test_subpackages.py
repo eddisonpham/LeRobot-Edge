@@ -90,7 +90,7 @@ class TestExportSubpackage:
         assert callable(export_policy_to_onnx)
 
     def test_import_tensorrt(self):
-        pytest.importskip("tensorrt", reason="TensorRT not installed")
+        pytest.importorskip("tensorrt", reason="TensorRT not installed")
         from lerobot_edge.export.tensorrt import TensorRTBackend
         assert TensorRTBackend is not None
 
