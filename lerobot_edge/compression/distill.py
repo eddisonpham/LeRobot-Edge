@@ -194,7 +194,10 @@ def _validate(
 
 def main() -> None:
     """CLI entry point for distillation."""
-    raise NotImplementedError("lerobot-edge-distill CLI is not yet implemented.")
+    raise SystemExit(
+        "lerobot-edge-distill: not yet implemented.\n"
+        "Use the distill() function directly for distillation."
+    )
 
 
 if __name__ == "__main__":

@@ -243,12 +243,15 @@ class TestExperimentTrackerWandb:
 
 
 class TestFinishedState:
-    def test_finish_then_log_warns(self, tmp_path):
+    def test_finish_then_log_warns(self, tmp_path, caplog):
         config = TrackConfig(log_dir=str(tmp_path))
         tracker = ExperimentTracker(config=config, enabled=False)
         tracker.init_run()
         tracker.finish_run()
         assert tracker._finished
+        with caplog.at_level("WARNING"):
+            tracker.log_metrics({"x": 1})
+        assert "finish_run" in caplog.text
 
     def test_init_resets_finished(self, tmp_path):
         config = TrackConfig(log_dir=str(tmp_path))
