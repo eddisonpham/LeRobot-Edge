@@ -77,38 +77,30 @@ def compare_all_backends(
     return results
 
 
-def _bench_onnx_fp32(model, dummy_input, dev, warmup, num_runs, results):
+def _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, key, config_cls, filename):
     try:
         from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend, HAS_ONNX, HAS_ORT
         if not (HAS_ONNX and HAS_ORT):
-            logger.warning("ONNX FP32 benchmark skipped: onnx/onnxruntime not installed")
+            logger.warning("ONNX benchmark skipped (%s): onnx/onnxruntime not installed", key)
             return
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
-            onnx_path = Path(tmpdir) / "model.onnx"
-            from lerobot_edge.core.configs import EdgeOnnxFp32Config
-            export_policy_to_onnx(model, EdgeOnnxFp32Config(device=str(dev)), onnx_path)
+            onnx_path = Path(tmpdir) / filename
+            export_policy_to_onnx(model, config_cls(device=str(dev)), onnx_path)
             ort_backend = OnnxRuntimeBackend(onnx_path, device=dev)
-            results["onnx_fp32"] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
-    except Exception as e:
-        logger.warning("ONNX FP32 benchmark failed: %s", e)
+            results[key] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
+    except (ImportError, FileNotFoundError, RuntimeError) as e:
+        logger.warning("ONNX benchmark failed (%s): %s", key, e)
+
+
+def _bench_onnx_fp32(model, dummy_input, dev, warmup, num_runs, results):
+    from lerobot_edge.core.configs import EdgeOnnxFp32Config
+    _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, "onnx_fp32", EdgeOnnxFp32Config, "model.onnx")
 
 
 def _bench_onnx_int8(model, dummy_input, dev, warmup, num_runs, results):
-    try:
-        from lerobot_edge.export.onnx import export_policy_to_onnx, OnnxRuntimeBackend, HAS_ONNX, HAS_ORT
-        if not (HAS_ONNX and HAS_ORT):
-            logger.warning("ONNX INT8 benchmark skipped: onnx/onnxruntime not installed")
-            return
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmpdir:
-            onnx_path = Path(tmpdir) / "model_int8.onnx"
-            from lerobot_edge.core.configs import EdgeOnnxInt8Config
-            export_policy_to_onnx(model, EdgeOnnxInt8Config(device=str(dev)), onnx_path)
-            ort_backend = OnnxRuntimeBackend(onnx_path, device=dev)
-            results["onnx_int8"] = _bench_backend(ort_backend, dummy_input, warmup, num_runs)
-    except Exception as e:
-        logger.warning("ONNX INT8 benchmark failed: %s", e)
+    from lerobot_edge.core.configs import EdgeOnnxInt8Config
+    _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, "onnx_int8", EdgeOnnxInt8Config, "model_int8.onnx")
 
 
 def _bench_backend(backend, dummy_input, warmup, num_runs):
