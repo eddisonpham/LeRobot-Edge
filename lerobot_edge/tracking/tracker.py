@@ -83,6 +83,8 @@ class ExperimentTracker:
 
     def log_config(self, config: dict[str, Any]) -> None:
         """Log run configuration."""
+        if self._finished:
+            logger.warning("log_config called after finish_run — data will be lost")
         if self._enabled and self._run is not None:
             self._run.config.update(config)
         else:
@@ -96,6 +98,8 @@ class ExperimentTracker:
         description: str = "",
     ) -> None:
         """Log a file artifact (model checkpoint, results JSON, etc.)."""
+        if self._finished:
+            logger.warning("log_artifact called after finish_run — data will be lost")
         if self._enabled and self._run is not None:
             artifact = wandb.Artifact(name=artifact_name, type=artifact_type)
             artifact.add_file(str(local_path))
@@ -145,6 +149,8 @@ class ExperimentTracker:
         columns: list[str] | None = None,
     ) -> None:
         """Log a comparison table (wandb.Table when available)."""
+        if self._finished:
+            logger.warning("log_comparison_table called after finish_run — data will be lost")
         if not results:
             return
 

@@ -19,7 +19,7 @@ graph TD
     F --> H
     G --> H
     H --> I[evaluation/<br/>Pareto Report]
-    I --> J[monitoring_pkg/<br/>W&B Tracking]
+    I --> J[tracking/<br/>W&B Tracking]
 ```
 
 ### Package Layout
@@ -30,7 +30,7 @@ lerobot_edge/
   compression/       # Quantization (INT8, 4-bit) and distillation
   export/            # ONNX export and TensorRT export
   evaluation/        # Benchmark harness, metrics, Pareto reports
-  monitoring_pkg/    # W&B experiment tracking, local JSON fallback
+  tracking/    # W&B experiment tracking, local JSON fallback
   configs.py         # Config dataclasses (backward-compatible re-export)
   quantize.py        # Quantization functions (backward-compatible re-export)
   benchmark.py       # Benchmark harness (backward-compatible re-export)

@@ -146,7 +146,7 @@ class TestExperimentTrackerWandb:
         mock_wandb.init.return_value = mock_run
 
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
-            import lerobot_edge.monitoring_pkg.tracker as mon_mod
+            import lerobot_edge.tracking.tracker as mon_mod
             old_has_wandb = mon_mod.HAS_WANDB
             old_wandb_ref = getattr(mon_mod, "wandb", None)
             mon_mod.HAS_WANDB = True
@@ -175,7 +175,7 @@ class TestExperimentTrackerWandb:
         mock_wandb.init.return_value = mock_run
 
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
-            import lerobot_edge.monitoring_pkg.tracker as mon_mod
+            import lerobot_edge.tracking.tracker as mon_mod
             old_has_wandb = mon_mod.HAS_WANDB
             old_wandb_ref = getattr(mon_mod, "wandb", None)
             mon_mod.HAS_WANDB = True
@@ -199,7 +199,7 @@ class TestExperimentTrackerWandb:
         mock_wandb.init.return_value = mock_run
 
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
-            import lerobot_edge.monitoring_pkg.tracker as mon_mod
+            import lerobot_edge.tracking.tracker as mon_mod
             old_has_wandb = mon_mod.HAS_WANDB
             old_wandb_ref = getattr(mon_mod, "wandb", None)
             mon_mod.HAS_WANDB = True
@@ -223,7 +223,7 @@ class TestExperimentTrackerWandb:
         mock_wandb.init.return_value = mock_run
 
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
-            import lerobot_edge.monitoring_pkg.tracker as mon_mod
+            import lerobot_edge.tracking.tracker as mon_mod
             old_has_wandb = mon_mod.HAS_WANDB
             old_wandb_ref = getattr(mon_mod, "wandb", None)
             mon_mod.HAS_WANDB = True

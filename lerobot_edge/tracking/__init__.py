@@ -1,6 +1,6 @@
 """Experiment tracking and monitoring with W&B integration."""
 
-from lerobot_edge.monitoring_pkg.tracker import (
+from lerobot_edge.tracking.tracker import (
     ExperimentTracker,
     TrackConfig,
 )

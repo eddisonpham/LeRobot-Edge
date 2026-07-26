@@ -142,7 +142,7 @@ class TestEvaluationSubpackage:
 
 class TestMonitoringSubpackage:
     def test_import_tracker(self):
-        from lerobot_edge.monitoring_pkg.tracker import (
+        from lerobot_edge.tracking.tracker import (
             ExperimentTracker,
             TrackConfig,
         )
@@ -150,7 +150,7 @@ class TestMonitoringSubpackage:
         assert TrackConfig is not None
 
     def test_monitoring_init_exports(self):
-        from lerobot_edge.monitoring_pkg import ExperimentTracker, TrackConfig
+        from lerobot_edge.tracking import ExperimentTracker, TrackConfig
         assert ExperimentTracker is not None
 
 
