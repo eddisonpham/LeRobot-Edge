@@ -21,6 +21,42 @@ graph TD
     H --> I[report.py<br/>Pareto Frontier]
 ```
 
+## Quantization Pipeline
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant Q as quantize.py
+    participant M as Model
+    participant B as Backend
+
+    U->>Q: dynamic_int8_quantize(model)
+    Q->>M: Identify Linear layers
+    M-->>Q: List of quantizable layers
+    Q->>M: torch.quantization.quantize_dynamic()
+    M-->>Q: Quantized model
+    Q->>B: QuantizedBackend.from_policy()
+    B-->>Q: Wrapped backend
+    Q-->>U: CompressedPolicy ready
+
+    Note over U,Q: Static INT8 path
+    U->>Q: static_int8_quantize(model, calibration_data)
+    Q->>M: torch.quantization.prepare()
+    loop Calibration steps
+        M->>M: Forward pass with calibration data
+    end
+    M-->>Q: Prepared model
+    Q->>M: torch.quantization.convert()
+    M-->>Q: Quantized model
+    Q-->>U: CompressedPolicy ready
+
+    Note over U,Q: 4-bit path
+    U->>Q: quantize_4bit(model)
+    Q->>M: bitsandbytes.prepare_for_4bit()
+    M-->>Q: 4-bit model
+    Q-->>U: CompressedPolicy ready
+```
+
 ## Installation
 
 ```bash
