@@ -23,7 +23,7 @@ from lerobot_edge.quantize import (
     QuantizedBackend,
     measure_model_memory,
 )
-from lerobot_edge.test_models import SimpleCNNPolicy
+from test_models import SimpleCNNPolicy
 from lerobot_edge.benchmark import benchmark_backend, BenchmarkResult
 from lerobot_edge.router import ConfidenceRouter
 

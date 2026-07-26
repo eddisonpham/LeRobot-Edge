@@ -70,13 +70,8 @@ def static_int8_quantize(
     if not calibration_data:
         raise ValueError("calibration_data must not be empty")
 
-    calibration_tensor: torch.Tensor | None = None
-    for key, value in calibration_data.items():
-        if isinstance(value, torch.Tensor):
-            calibration_tensor = value
-            break
-
-    if calibration_tensor is None:
+    tensors = [v for v in calibration_data.values() if isinstance(v, torch.Tensor)]
+    if not tensors:
         raise ValueError(
             "calibration_data must contain at least one tensor value. "
             f"Got keys: {list(calibration_data.keys())}"
@@ -87,7 +82,6 @@ def static_int8_quantize(
     model_prepared = torch.quantization.prepare(model, inplace=False)
 
     with torch.no_grad():
-        tensors = [v for v in calibration_data.values() if isinstance(v, torch.Tensor)]
         for i in range(num_calibration_steps):
             model_prepared(*tensors)
 
