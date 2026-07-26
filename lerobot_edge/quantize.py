@@ -87,8 +87,9 @@ def static_int8_quantize(
     model_prepared = torch.quantization.prepare(model, inplace=False)
 
     with torch.no_grad():
+        tensors = [v for v in calibration_data.values() if isinstance(v, torch.Tensor)]
         for i in range(num_calibration_steps):
-            model_prepared(calibration_tensor)
+            model_prepared(*tensors)
 
     quantized_model = torch.quantization.convert(model_prepared, inplace=False)
     logger.info("Static INT8 quantization applied successfully after %d calibration steps.", num_calibration_steps)

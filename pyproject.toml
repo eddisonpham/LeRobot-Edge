@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=75.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "lerobot-edge"
@@ -58,6 +58,7 @@ all = [
 lerobot-edge-benchmark = "lerobot_edge.benchmark:main"
 lerobot-edge-quantize = "lerobot_edge.quantize:main"
 lerobot-edge-report = "lerobot_edge.report:main"
+# lerobot-edge-distill: not yet implemented (distill.py main raises NotImplementedError)
 
 [project.urls]
 Homepage = "https://github.com/lerobot-edge/lerobot-edge"

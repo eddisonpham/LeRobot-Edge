@@ -73,7 +73,7 @@ class ConfidenceRouter:
             return 1.0
 
         cv = (std / mean.abs()).item()
-        x = -cv * 5 + 2.5
+        x = max(-500.0, min(500.0, -cv * 5 + 2.5))
         confidence = 1.0 / (1.0 + math.exp(-x))
         return confidence
 
