@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 
 from lerobot_edge.compression.quantize import QuantizedBackend
-from lerobot_edge.core.base import IdentityBackend
+from lerobot_edge.core.base import CompiledBackend, IdentityBackend
 from lerobot_edge.core.configs import EdgeQuantInt8Config
 from lerobot_edge.core.utils import (
     build_dummy_input,
@@ -53,7 +53,7 @@ def _simple_model():
 
 
 DEFAULT_BACKENDS = ["identity", "int8"]
-ALL_BACKENDS = ["identity", "int8", "onnx_fp32", "onnx_int8"]
+ALL_BACKENDS = ["identity", "int8", "onnx_fp32", "onnx_int8", "identity_compile", "int8_compile"]
 
 
 def compare_all_backends(
@@ -64,12 +64,15 @@ def compare_all_backends(
     num_runs: int = 100,
     device: str = "cpu",
     backends: list[str] | None = None,
+    compile_mode: str | None = None,
 ) -> dict[str, Any]:
     """Benchmark selected backends against the original model.
 
     Args:
         backends: Which backends to benchmark. Default ["identity", "int8"].
-            Options: "identity", "int8", "onnx_fp32", "onnx_int8".
+            Options: "identity", "int8", "onnx_fp32", "onnx_int8",
+            "identity_compile", "int8_compile".
+        compile_mode: torch.compile mode (e.g. "max-autotune"). None disables.
     """
     if backends is None:
         backends = list(DEFAULT_BACKENDS)
@@ -89,34 +92,58 @@ def compare_all_backends(
         if hasattr(quantized, "_policy"):
             results["dynamic_int8"]["memory"] = measure_model_memory(quantized._policy)
 
+    if "identity_compile" in backends:
+        mode = compile_mode or "max-autotune"
+        identity = IdentityBackend(model, dev)
+        compiled = CompiledBackend(identity, mode=mode)
+        results["identity_compiled"] = _bench_backend(
+            compiled, dummy_input, warmup, num_runs, is_compiled=True
+        )
+        results["identity_compiled"]["memory"] = measure_model_memory(model)
+
+    if "int8_compile" in backends:
+        mode = compile_mode or "max-autotune"
+        quant_config = EdgeQuantInt8Config(device=device)
+        quantized = QuantizedBackend.from_policy(model, quant_config)
+        compiled = CompiledBackend(quantized, mode=mode)
+        results["int8_compiled"] = _bench_backend(
+            compiled, dummy_input, warmup, num_runs, is_compiled=True
+        )
+        if hasattr(quantized, "_policy"):
+            results["int8_compiled"]["memory"] = measure_model_memory(quantized._policy)
+
+    if compile_mode and "identity" in backends and "identity_compile" not in backends:
+        identity = IdentityBackend(model, dev)
+        compiled = CompiledBackend(identity, mode=compile_mode)
+        results["identity_compiled"] = _bench_backend(
+            compiled, dummy_input, warmup, num_runs, is_compiled=True
+        )
+        results["identity_compiled"]["memory"] = measure_model_memory(model)
+
+    if compile_mode and "int8" in backends and "int8_compile" not in backends:
+        quant_config = EdgeQuantInt8Config(device=device)
+        quantized = QuantizedBackend.from_policy(model, quant_config)
+        compiled = CompiledBackend(quantized, mode=compile_mode)
+        results["int8_compiled"] = _bench_backend(
+            compiled, dummy_input, warmup, num_runs, is_compiled=True
+        )
+        if hasattr(quantized, "_policy"):
+            results["int8_compiled"]["memory"] = measure_model_memory(quantized._policy)
+
     if "onnx_fp32" in backends:
         from lerobot_edge.core.configs import EdgeOnnxFp32Config
 
         _bench_onnx(
-            model,
-            dummy_input,
-            dev,
-            warmup,
-            num_runs,
-            results,
-            "onnx_fp32",
-            EdgeOnnxFp32Config,
-            "model.onnx",
+            model, dummy_input, dev, warmup, num_runs, results,
+            "onnx_fp32", EdgeOnnxFp32Config, "model.onnx",
         )
 
     if "onnx_int8" in backends:
         from lerobot_edge.core.configs import EdgeOnnxInt8Config
 
         _bench_onnx(
-            model,
-            dummy_input,
-            dev,
-            warmup,
-            num_runs,
-            results,
-            "onnx_int8",
-            EdgeOnnxInt8Config,
-            "model_int8.onnx",
+            model, dummy_input, dev, warmup, num_runs, results,
+            "onnx_int8", EdgeOnnxInt8Config, "model_int8.onnx",
         )
 
     return results
@@ -145,11 +172,12 @@ def _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, key, config_
         logger.warning("ONNX benchmark failed (%s): %s", key, e)
 
 
-def _bench_backend(backend, dummy_input, warmup, num_runs):
+def _bench_backend(backend, dummy_input, warmup, num_runs, is_compiled=False):
     device = backend.device
     inp = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in dummy_input.items()}
 
-    for _ in range(warmup):
+    effective_warmup = warmup + (10 if is_compiled else 0)
+    for _ in range(effective_warmup):
         backend.predict(inp)
 
     latencies = []
@@ -220,6 +248,18 @@ def main() -> None:
         choices=ALL_BACKENDS,
         help=f"Backends to benchmark (default: identity int8). Options: {', '.join(ALL_BACKENDS)}",
     )
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        help="Enable torch.compile for GPU kernel fusion",
+    )
+    parser.add_argument(
+        "--compile-mode",
+        type=str,
+        default="max-autotune",
+        choices=["default", "reduce-overhead", "max-autotune"],
+        help="torch.compile mode (default: max-autotune)",
+    )
     args = parser.parse_args()
 
     if args.checkpoint:
@@ -236,6 +276,7 @@ def main() -> None:
     else:
         model, dummy_input = _simple_model()
 
+    compile_mode = args.compile_mode if args.compile else None
     results = compare_all_backends(
         model,
         dummy_input,
@@ -243,6 +284,7 @@ def main() -> None:
         num_runs=args.num_runs,
         device=args.device,
         backends=args.backends,
+        compile_mode=compile_mode,
     )
     results["checkpoint"] = args.checkpoint or "simple_model"
     results["policy_type"] = args.policy_type if args.checkpoint else None

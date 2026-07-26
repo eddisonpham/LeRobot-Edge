@@ -142,7 +142,7 @@ class TestCompareBackends:
         m1 = _SelectActionModel(dim_in=4, dim_out=2)
         m2 = _SelectActionModel(dim_in=4, dim_out=2)
         m2.load_state_dict(m1.state_dict())
-        m2.linear.weight.data.add_(0.1)
+        m2.linear.weight.data = torch.randn_like(m2.linear.weight.data)
 
         dummy_input = {"observation.state": torch.randn(1, 4)}
         report = compare_backends(m1, m2, dummy_input, num_samples=5)

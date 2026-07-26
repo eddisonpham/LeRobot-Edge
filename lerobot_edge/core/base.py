@@ -25,6 +25,7 @@ __all__ = [
     "DeploymentBackend",
     "NativePyTorchBackend",
     "IdentityBackend",
+    "CompiledBackend",
     "CompressedPolicy",
 ]
 
@@ -74,6 +75,56 @@ class NativePyTorchBackend(DeploymentBackend):
 
 class IdentityBackend(NativePyTorchBackend):
     """Passthrough backend — no transformation applied."""
+
+
+class _PredictWrapper(nn.Module):
+    """nn.Module wrapper that delegates predict to a DeploymentBackend."""
+
+    def __init__(self, backend: DeploymentBackend) -> None:
+        super().__init__()
+        self._backend = backend
+
+    def forward(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        return self._backend.predict(batch)
+
+
+class CompiledBackend(DeploymentBackend):
+    """Wraps a backend with torch.compile for kernel fusion."""
+
+    def __init__(
+        self,
+        backend: DeploymentBackend,
+        mode: str = "max-autotune",
+        fullgraph: bool = False,
+    ) -> None:
+        if not hasattr(torch, "compile"):
+            raise ImportError("torch.compile requires PyTorch >= 2.0")
+        self._backend = backend
+        self._mode = mode
+        self._fullgraph = fullgraph
+        wrapper = _PredictWrapper(backend)
+        self._compiled = torch.compile(
+            wrapper,
+            mode=mode,
+            fullgraph=fullgraph,
+        )
+        logger.info("CompiledBackend created (mode=%s)", mode)
+
+    def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        return self._compiled(batch)
+
+    def reset(self) -> None:
+        self._backend.reset()
+        if hasattr(torch, "_dynamo"):
+            torch._dynamo.reset()
+
+    @property
+    def device(self) -> torch.device:
+        return self._backend.device
+
+    @property
+    def parameters(self) -> list[nn.Parameter]:
+        return self._backend.parameters
 
 
 class CompressedPolicy(PreTrainedPolicy):
