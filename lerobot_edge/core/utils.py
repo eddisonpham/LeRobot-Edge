@@ -12,6 +12,7 @@ __all__ = [
     "measure_model_memory",
     "measure_peak_memory_mb",
     "sigmoid_scalar",
+    "build_dummy_input",
 ]
 
 
@@ -61,3 +62,24 @@ def measure_peak_memory_mb() -> float:
 def sigmoid_scalar(x: float) -> float:
     """Compute sigmoid of a scalar without creating tensors."""
     return 1.0 / (1.0 + math.exp(-x))
+
+
+def build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torch.Tensor]:
+    """Build dummy input batch from policy's expected features."""
+    dummy_input = {}
+    if hasattr(policy, 'config') and hasattr(policy.config, 'input_features'):
+        for name, feature in policy.config.input_features.items():
+            shape = list(feature.shape) if hasattr(feature, 'shape') else [1, 3, 224, 224]
+            if len(shape) == 0:
+                shape = [1]
+            elif len(shape) == 1 and shape[0] != 1:
+                shape.insert(0, 1)
+            dummy_input[name] = torch.randn(shape, device=device)
+
+    if not dummy_input:
+        dummy_input = {
+            "observation.images.front": torch.randn(1, 3, 224, 224, device=device),
+            "observation.state": torch.randn(1, 2, device=device),
+        }
+
+    return dummy_input

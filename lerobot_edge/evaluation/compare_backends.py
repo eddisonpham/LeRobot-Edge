@@ -15,7 +15,7 @@ import torch.nn as nn
 from lerobot_edge.core.base import IdentityBackend
 from lerobot_edge.compression.quantize import QuantizedBackend
 from lerobot_edge.core.configs import EdgeQuantInt8Config
-from lerobot_edge.core.utils import measure_model_memory
+from lerobot_edge.core.utils import build_dummy_input, measure_model_memory
 
 logger = logging.getLogger(__name__)
 
@@ -108,18 +108,26 @@ def _bench_backend(backend, dummy_input, warmup, num_runs):
 
 
 def print_comparison(results: dict[str, Any]) -> None:
+    """Print formatted benchmark comparison table."""
     print("\n" + "=" * 80)
     print("BACKEND COMPARISON")
     print("=" * 80)
     print(f"{'Backend':<20} {'Mean (ms)':<12} {'P50 (ms)':<12} {'P95 (ms)':<12} {'FPS':<10}")
     print("-" * 80)
-    for name, r in results.items():
-        if not isinstance(r, dict) or "latency_mean_ms" not in r:
-            continue
+
+    backend_results = {
+        k: v for k, v in results.items()
+        if isinstance(v, dict) and "latency_mean_ms" in v
+    }
+    for name, r in backend_results.items():
         mem = r.get("memory", {})
-        mem_str = f" ({mem.get('total_mb', 0):.1f} MB)" if mem else ""
+        mem_str = f" ({mem.get('total_mb', 0):.2f} MB)" if mem else ""
         print(f"{name + mem_str:<20} {r['latency_mean_ms']:>8.2f}    {r['latency_p50_ms']:>8.2f}    {r['latency_p95_ms']:>8.2f}    {r['throughput_fps']:>8.1f}")
     print("=" * 80)
+
+    if any(k in backend_results for k in ["dynamic_int8", "onnx_int8"]):
+        print("NOTE: INT8 quantization adds framework dispatch overhead on small/CPU models.")
+        print("      Benefits appear on larger models (>100M params) or with torch.compile.")
 
 
 def main() -> None:
@@ -128,6 +136,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Compare backend performance")
     parser.add_argument("--checkpoint", type=str, default=None, help="HuggingFace Hub model ID or local path")
+    parser.add_argument("--policy-type", type=str, default="smolvla", help="Policy type for loading (default: smolvla)")
     parser.add_argument("--output", type=str, default="benchmark_results/comparison.json")
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--num-runs", type=int, default=100)
@@ -135,27 +144,25 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.checkpoint:
-        logger.info("Loading real checkpoint: %s", args.checkpoint)
+        logger.info("Loading real checkpoint: %s (type=%s)", args.checkpoint, args.policy_type)
         try:
             from lerobot.policies.factory import make_policy, make_policy_config
-            config = make_policy_config("smolvla")
+            config = make_policy_config(args.policy_type)
             config.pretrained_path = args.checkpoint
             config.device = args.device
             model = make_policy(config)
             model.eval()
-            dummy_input = {
-                "observation.images.front": torch.randn(1, 3, 224, 224),
-                "observation.state": torch.randn(1, 2),
-            }
+            dummy_input = build_dummy_input(model, torch.device(args.device))
         except Exception as e:
-            logger.error("Failed to load checkpoint: %s", e)
-            logger.info("Falling back to simple model")
+            logger.warning("Could not load checkpoint (missing dependencies). Falling back to simple model.")
+            logger.debug("Load error: %s", e)
             model, dummy_input = _simple_model()
     else:
         model, dummy_input = _simple_model()
 
     results = compare_all_backends(model, dummy_input, warmup=args.warmup, num_runs=args.num_runs, device=args.device)
     results["checkpoint"] = args.checkpoint or "simple_model"
+    results["policy_type"] = args.policy_type if args.checkpoint else None
     print_comparison(results)
 
     output_path = Path(args.output)

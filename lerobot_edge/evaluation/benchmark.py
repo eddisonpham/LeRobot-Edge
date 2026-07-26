@@ -16,7 +16,7 @@ import torch.nn as nn
 
 from lerobot_edge.core.base import DeploymentBackend
 from lerobot_edge.core.configs import EdgeBaseConfig
-from lerobot_edge.core.utils import get_git_commit_hash, measure_model_memory, measure_peak_memory_mb
+from lerobot_edge.core.utils import build_dummy_input, get_git_commit_hash, measure_model_memory, measure_peak_memory_mb
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +270,7 @@ def main() -> None:
         logger.error("Failed to load policy: %s", e)
         return
 
-    dummy_input = _build_dummy_input(policy, device)
+    dummy_input = build_dummy_input(policy, device)
 
     variants: dict[str, NativePyTorchBackend] = {}
     variant_config_map = {
@@ -314,25 +314,6 @@ def main() -> None:
     print(f"\nResults saved to {args.output_dir}/")
 
 
-def _build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torch.Tensor]:
-    """Build a dummy input batch from policy's expected features."""
-    dummy_input = {}
-    if hasattr(policy, 'config') and hasattr(policy.config, 'input_features'):
-        for name, feature in policy.config.input_features.items():
-            shape = list(feature.shape) if hasattr(feature, 'shape') else [1, 3, 224, 224]
-            if len(shape) == 0:
-                shape = [1]
-            elif len(shape) == 1 and shape[0] != 1:
-                shape.insert(0, 1)
-            dummy_input[name] = torch.randn(shape, device=device)
-
-    if not dummy_input:
-        dummy_input = {
-            "observation.images.front": torch.randn(1, 3, 224, 224, device=device),
-            "observation.state": torch.randn(1, 2, device=device),
-        }
-
-    return dummy_input
 
 
 if __name__ == "__main__":
