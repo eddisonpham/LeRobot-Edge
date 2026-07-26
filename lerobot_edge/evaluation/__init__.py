@@ -14,6 +14,7 @@ from lerobot_edge.evaluation.benchmark import (
     compare_results,
     load_results,
 )
+from lerobot_edge.evaluation.gate import QualityGate, QualityGateResult
 from lerobot_edge.evaluation.report import (
     aggregate_results,
     generate_report,
@@ -32,6 +33,8 @@ __all__ = [
     "benchmark_policy_variants",
     "compare_results",
     "load_results",
+    "QualityGate",
+    "QualityGateResult",
     "aggregate_results",
     "generate_report",
     "generate_results_table",

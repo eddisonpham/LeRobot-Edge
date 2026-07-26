@@ -16,6 +16,7 @@ from lerobot_edge.core.base import IdentityBackend
 from lerobot_edge.compression.quantize import QuantizedBackend
 from lerobot_edge.core.configs import EdgeQuantInt8Config
 from lerobot_edge.core.utils import build_dummy_input, measure_model_memory
+from lerobot_edge.evaluation.gate import QualityGate
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,20 @@ def main() -> None:
     results["checkpoint"] = args.checkpoint or "simple_model"
     results["policy_type"] = args.policy_type if args.checkpoint else None
     print_comparison(results)
+
+    gate = QualityGate(min_cosine_similarity=0.999, num_samples=10)
+    quantized_model = QuantizedBackend.from_policy(model, EdgeQuantInt8Config(device=args.device))
+    gate_result = gate.check(model, quantized_model._policy, dummy_input)
+    results["quality_gate"] = {
+        "passed": gate_result.passed,
+        "cosine_similarity": gate_result.cosine_similarity,
+        "mse": gate_result.mse,
+        "threshold_cosine": gate_result.threshold_cosine,
+        "message": gate_result.message,
+    }
+    print(f"\nQuality Gate: {gate_result.message}")
+    if not gate_result.passed:
+        logger.error("Quality gate FAILED — quantization divergence exceeds threshold")
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
