@@ -165,11 +165,10 @@ class TensorRTBackend(DeploymentBackend):
 
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         """Run inference via TensorRT."""
-        # This is a simplified implementation
-        # A full implementation would handle CUDA memory management,
-        # input/output bindings, and async execution
-        logger.warning("TensorRTBackend.predict: simplified implementation")
-        return torch.zeros(1, device=self._device)
+        raise NotImplementedError(
+            "TensorRTBackend.predict requires a fully initialized TensorRT engine "
+            "with proper I/O bindings. This is a placeholder for future implementation."
+        )
 
     def reset(self) -> None:
         """No state to reset for TensorRT."""

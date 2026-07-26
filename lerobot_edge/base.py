@@ -189,11 +189,8 @@ class CompressedPolicy(PreTrainedPolicy):
         """
         actions = self._backend.predict(batch)
         # For a deployed policy, we can't compute a meaningful loss without
-        # ground-truth targets.  Return a differentiable zero loss tied to
-        # the model's parameters so that backward() works correctly.
-        loss = sum(p.sum() * 0.0 for p in self.parameters())
-        if not isinstance(loss, torch.Tensor):
-            loss = torch.tensor(0.0, device=self.device, requires_grad=True)
+        # ground-truth targets.  Return a differentiable zero loss.
+        loss = torch.tensor(0.0, device=self.device, requires_grad=True)
         return loss, {"actions": actions}
 
     def reset(self) -> None:

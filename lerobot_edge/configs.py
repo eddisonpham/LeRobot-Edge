@@ -16,6 +16,16 @@ from typing import Any
 
 from lerobot.configs import PreTrainedConfig
 
+__all__ = [
+    "EdgeBaseConfig",
+    "EdgeIdentityConfig",
+    "EdgeQuantInt8Config",
+    "EdgeOnnxFp32Config",
+    "EdgeOnnxInt8Config",
+    "EdgeDistilledConfig",
+    "EdgeDistilledOnnxInt8Config",
+]
+
 
 # ---------------------------------------------------------------------------
 # Base edge config (shared fields)

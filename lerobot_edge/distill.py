@@ -293,43 +293,10 @@ def _validate(
 
 def main() -> None:
     """CLI entry point for distillation."""
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Distill a LeRobot teacher policy into a smaller student"
+    raise NotImplementedError(
+        "lerobot-edge-distill CLI is not yet fully implemented. "
+        "Use the distill() function directly for distillation training."
     )
-    parser.add_argument(
-        "--teacher",
-        type=str,
-        required=True,
-        help="Teacher policy checkpoint path or HuggingFace Hub ID",
-    )
-    parser.add_argument(
-        "--student-config",
-        type=str,
-        required=True,
-        help="Student model configuration (JSON file or preset name)",
-    )
-    parser.add_argument(
-        "--dataset",
-        type=str,
-        required=True,
-        help="Training dataset path or HuggingFace Hub ID",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="Output directory for the distilled checkpoint",
-    )
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument("--device", type=str, default="cpu", help="Training device")
-
-    args = parser.parse_args()
-
-    logger.info("Distillation CLI not yet fully implemented")
-    logger.info("Teacher: %s, Student config: %s, Dataset: %s", args.teacher, args.student_config, args.dataset)
 
 
 if __name__ == "__main__":
