@@ -4,7 +4,7 @@
 
 LeRobot Edge plugs into LeRobot's policy system with zero source modifications. It adds INT8/4-bit quantization, ONNX/TensorRT export, quality validation, and benchmarking — everything you need to compress and deploy VLA models on GPU and CPU hardware.
 
-![LeRobot Edge Pipeline](docs/diagrams/hero.png)
+
 
 ## Installation
 

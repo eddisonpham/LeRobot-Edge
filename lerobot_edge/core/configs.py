@@ -29,24 +29,20 @@ class EdgeBaseConfig(PreTrainedConfig):
     source_policy_type: str = "smolvla"
     deploy_device: str | None = None
 
-    # Quantization
     quantize_dynamic: bool = True
     quantize_static: bool = False
     quantize_bits: int = 8
 
-    # ONNX
     onnx_opset: int = 17
     onnx_input_names: list[str] = field(default_factory=list)
     onnx_output_names: list[str] = field(default_factory=list)
     onnx_dynamic_axes: dict[str, dict[int, str]] = field(default_factory=dict)
 
-    # Distillation
     distill_epochs: int = 10
     distill_lr: float = 1e-4
     distill_temperature: float = 2.0
     distill_alpha: float = 0.5
 
-    # Benchmark
     benchmark_warmup: int = 10
     benchmark_num_runs: int = 100
 
