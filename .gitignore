@@ -49,3 +49,6 @@ docs/diagrams/
 # Experiment tracking
 wandb_logs/
 wandb/
+
+# Documentation assets
+docs/

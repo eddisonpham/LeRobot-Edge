@@ -14,6 +14,10 @@ Run with:
 
 from __future__ import annotations
 
+import json
+import tempfile
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -32,28 +36,15 @@ from lerobot_edge.core.configs import (
 )
 from lerobot_edge.core.utils import measure_model_memory
 
-# ---------------------------------------------------------------------------
-# Markers for skipping tests
-# ---------------------------------------------------------------------------
-
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.slow,
 ]
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="module")
 def smolvla_policy():
-    """Load real SmolVLA policy from HuggingFace Hub.
-
-    This fixture is module-scoped so the model is loaded once per test
-    module, not once per test function (downloading ~450M params is slow).
-    """
+    """Load real SmolVLA policy from HuggingFace Hub."""
     try:
         from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
         from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
@@ -76,13 +67,8 @@ def smolvla_batch():
     """Create a dummy batch matching SmolVLA's expected input format."""
     return {
         "observation.images.front": torch.randn(1, 3, 224, 224),
-        "observation.state": torch.randn(1, 2),  # SmolVLA state dim is typically small
+        "observation.state": torch.randn(1, 2),
     }
-
-
-# ---------------------------------------------------------------------------
-# Integration tests
-# ---------------------------------------------------------------------------
 
 
 class TestSmolVLAIdentityPlugin:
@@ -125,11 +111,9 @@ class TestSmolVLAIdentityPlugin:
         config = EdgeIdentityConfig(device="cpu")
         policy = CompressedPolicy(config=config, backend=backend)
 
-        # Run inference to populate cache
         policy.select_action(smolvla_batch)
         assert policy._action_cache is not None
 
-        # Reset
         policy.reset()
         assert policy._action_cache is None
         assert policy._cache_idx == 0
@@ -157,7 +141,6 @@ class TestSmolVLAQuantization:
         quantized_mem = measure_model_memory(quantized)
 
         assert quantized is not None
-        # Quantized model should not be larger
         assert quantized_mem["total_mb"] <= original_mem["total_mb"] * 1.1
 
     def test_quantized_smolvla_inference(self, smolvla_policy, smolvla_batch):
@@ -190,13 +173,9 @@ class TestSmolVLAQuantization:
         quantized = dynamic_int8_quantize(smolvla_policy)
         quantized_mem = measure_model_memory(quantized)
 
-        # For dynamic INT8, weights are stored as qint8 (1 byte per param)
-        # vs float32 (4 bytes per param).  The reduction may not be dramatic
-        # because not all layers are quantizable, but it should be measurable.
         reduction_pct = (1 - quantized_mem["total_mb"] / original["total_mb"]) * 100
         assert reduction_pct >= 0, f"Memory increased after quantization: {reduction_pct:.1f}%"
 
-        # Log for visibility
         print(
             f"\nMemory: {original['total_mb']:.1f} MB -> {quantized_mem['total_mb']:.1f} MB ({reduction_pct:.1f}% reduction)"
         )
@@ -283,3 +262,215 @@ class TestSmolVLABenchmark:
 
         assert result.latency_mean_ms > 0
         assert result.throughput_fps > 0
+
+
+class TestSmolVLAFullPipeline:
+    """Full pipeline chain test: load -> quantize -> benchmark -> quality gate -> save."""
+
+    def test_full_pipeline_load_quantize_benchmark_gate(self, smolvla_policy, smolvla_batch):
+        """End-to-end: load SmolVLA, quantize, benchmark, run quality gate, save results."""
+        from lerobot_edge.evaluation.benchmark import benchmark_backend
+        from lerobot_edge.evaluation.gate import QualityGate
+
+        original = smolvla_policy
+        original.eval()
+
+        quantized = dynamic_int8_quantize(original)
+        quantized.eval()
+
+        identity_backend = IdentityBackend(original)
+        identity_result = benchmark_backend(
+            identity_backend,
+            smolvla_batch,
+            warmup_runs=2,
+            num_runs=5,
+            backend_name="identity",
+            device_profile="laptop_cpu",
+        )
+
+        config = EdgeQuantInt8Config(device="cpu")
+        quant_backend = QuantizedBackend.from_policy(original, config)
+        quant_result = benchmark_backend(
+            quant_backend,
+            smolvla_batch,
+            warmup_runs=2,
+            num_runs=5,
+            backend_name="dynamic_int8",
+            device_profile="laptop_cpu",
+        )
+
+        gate = QualityGate(min_cosine_similarity=0.98, num_samples=5)
+        gate_result = gate.check(original, quantized, smolvla_batch)
+
+        assert identity_result.latency_mean_ms > 0
+        assert quant_result.latency_mean_ms > 0
+        assert gate_result.cosine_similarity > 0
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            results = {
+                "identity": {
+                    "latency_ms": identity_result.latency_mean_ms,
+                    "fps": identity_result.throughput_fps,
+                },
+                "quantized": {
+                    "latency_ms": quant_result.latency_mean_ms,
+                    "fps": quant_result.throughput_fps,
+                },
+                "quality_gate": {
+                    "passed": gate_result.passed,
+                    "cosine_similarity": gate_result.cosine_similarity,
+                    "mse": gate_result.mse,
+                    "message": gate_result.message,
+                },
+            }
+            json.dump(results, f, indent=2)
+            output_path = f.name
+
+        loaded = json.loads(Path(output_path).read_text())
+        assert loaded["identity"]["latency_ms"] > 0
+        assert loaded["quality_gate"]["cosine_similarity"] > 0
+
+        Path(output_path).unlink()
+
+    def test_quality_gate_with_real_smolvla(self, smolvla_policy, smolvla_batch):
+        """Quality gate should pass for dynamic INT8 on real SmolVLA."""
+        from lerobot_edge.evaluation.gate import QualityGate
+
+        quantized = dynamic_int8_quantize(smolvla_policy)
+        quantized.eval()
+
+        gate = QualityGate(min_cosine_similarity=0.98, num_samples=10)
+        result = gate.check(smolvla_policy, quantized, smolvla_batch)
+
+        assert result.cosine_similarity > 0.9, (
+            f"Cosine similarity too low: {result.cosine_similarity:.6f}"
+        )
+        assert result.passed or result.cosine_similarity >= 0.95, (
+            f"Quality gate failed with cosine={result.cosine_similarity:.6f}: {result.message}"
+        )
+
+    def test_quality_gate_rejects_heavily_quantized(self, smolvla_policy, smolvla_batch):
+        """Quality gate should reject when cosine similarity is below threshold."""
+        from lerobot_edge.evaluation.gate import QualityGate
+
+        gate_strict = QualityGate(min_cosine_similarity=0.9999, num_samples=5)
+        quantized = dynamic_int8_quantize(smolvla_policy)
+        result = gate_strict.check(smolvla_policy, quantized, smolvla_batch)
+
+        assert result.threshold_cosine == 0.9999
+        assert result.cosine_similarity > 0
+        assert not result.passed or result.cosine_similarity >= 0.9999
+
+    def test_compare_backends_metrics(self, smolvla_policy, smolvla_batch):
+        """compare_backends should return full quality report."""
+        from lerobot_edge.evaluation.metrics import compare_backends
+
+        quantized = dynamic_int8_quantize(smolvla_policy)
+        report = compare_backends(smolvla_policy, quantized, smolvla_batch, num_samples=3)
+
+        assert report.original_params > 0
+        assert report.quantized_params > 0
+        assert report.latency_original_ms > 0
+        assert report.latency_quantized_ms > 0
+        assert report.divergence.cosine_similarity > 0
+        assert report.compression_ratio >= 1.0
+        assert isinstance(report.to_dict(), dict)
+
+
+class TestSmolVLABatchStability:
+    """Multi-batch inference stability tests."""
+
+    def test_repeated_inference_consistency(self, smolvla_policy, smolvla_batch):
+        """Same input should produce same output across repeated calls."""
+        backend = IdentityBackend(smolvla_policy)
+        config = EdgeIdentityConfig(device="cpu")
+        policy = CompressedPolicy(config=config, backend=backend)
+
+        torch.manual_seed(42)
+        action1 = policy.select_action(smolvla_batch).clone()
+        policy.reset()
+
+        torch.manual_seed(42)
+        action2 = policy.select_action(smolvla_batch).clone()
+        policy.reset()
+
+        assert torch.allclose(action1, action2, atol=1e-6)
+
+    def test_varied_batch_sizes(self, smolvla_policy):
+        """Inference should work with batch size 1 (SmolVLA's primary mode)."""
+        backend = IdentityBackend(smolvla_policy)
+        config = EdgeIdentityConfig(device="cpu")
+        policy = CompressedPolicy(config=config, backend=backend)
+
+        batch = {
+            "observation.images.front": torch.randn(1, 3, 224, 224),
+            "observation.state": torch.randn(1, 2),
+        }
+        action = policy.select_action(batch)
+        assert isinstance(action, torch.Tensor)
+        assert action.shape[0] == 1
+        assert not torch.isnan(action).any()
+        policy.reset()
+
+    def test_quantized_repeated_inference(self, smolvla_policy, smolvla_batch):
+        """Quantized model should produce stable outputs across calls."""
+        config = EdgeQuantInt8Config(device="cpu")
+        backend = QuantizedBackend.from_policy(smolvla_policy, config)
+
+        outputs = []
+        for _ in range(5):
+            action = backend.predict(smolvla_batch)
+            outputs.append(action.clone())
+
+        for i in range(1, len(outputs)):
+            assert torch.allclose(outputs[0], outputs[i], atol=1e-5), (
+                f"Output drift at iteration {i}"
+            )
+
+
+class TestSmolVLAConfigRoundTrip:
+    """Config serialization round-trip tests."""
+
+    def test_identity_config_roundtrip(self, tmp_path):
+        """EdgeIdentityConfig should save and load correctly."""
+        config = EdgeIdentityConfig(device="cpu")
+        config.save_pretrained(tmp_path)
+        restored = EdgeIdentityConfig.from_pretrained(tmp_path)
+        assert restored.type == "edge_identity"
+        assert restored.device == "cpu"
+
+    def test_quant_int8_config_roundtrip(self, tmp_path):
+        """EdgeQuantInt8Config should save and load correctly."""
+        config = EdgeQuantInt8Config(device="cpu", quantize_bits=8)
+        config.save_pretrained(tmp_path)
+        restored = EdgeQuantInt8Config.from_pretrained(tmp_path)
+        assert restored.type == "edge_quant_int8"
+        assert restored.quantize_bits == 8
+
+    def test_all_edge_configs_roundtrip(self, tmp_path):
+        """All edge config types should roundtrip through save/load."""
+        from lerobot_edge.core.configs import (
+            EdgeDistilledConfig,
+            EdgeOnnxFp32Config,
+            EdgeQuantBnbFp4Config,
+            EdgeQuantBnbInt8Config,
+            EdgeQuantBnbNf4Config,
+        )
+
+        configs = [
+            EdgeIdentityConfig(device="cpu"),
+            EdgeQuantInt8Config(device="cpu"),
+            EdgeQuantBnbInt8Config(device="cpu"),
+            EdgeQuantBnbNf4Config(device="cpu"),
+            EdgeQuantBnbFp4Config(device="cpu"),
+            EdgeOnnxFp32Config(device="cpu"),
+            EdgeDistilledConfig(device="cpu"),
+        ]
+
+        for config in configs:
+            sub = tmp_path / config.type
+            sub.mkdir()
+            config.save_pretrained(sub)
+            cls = type(config)
+            restored = cls.from_pretrained(sub)
+            assert restored.type == config.type

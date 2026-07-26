@@ -1,4 +1,4 @@
-.PHONY: install install-dev test test-verbose lint format typecheck clean benchmark quantize evaluate
+.PHONY: install install-dev test test-all test-evaluation test-verbose lint format typecheck clean benchmark quantize evaluate ci
 
 CHECKPOINT ?= lerobot/smolvla_base
 OUTPUT_DIR ?= benchmark_results
