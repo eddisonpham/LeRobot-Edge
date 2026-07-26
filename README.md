@@ -100,12 +100,14 @@ SmolVLA (864 MB, ~450M params) — measured on NVIDIA RTX 5060 and Intel CPU. Al
 
 ### Memory Footprint
 
-| Format | Model Size | VRAM at Inference | Compression |
-|--------|-----------|-------------------|-------------|
-| FP32 (original) | 864 MB | ~864 MB | -- |
-| Dynamic INT8 | 864 MB | Reduced vs FP32 | Weights FP32, activations INT8 |
-| Static INT8 | ~216 MB | ~216 MB | 4x (estimated) |
-| 4-bit NF4 | ~108 MB | ~108 MB | 8x (estimated) |
+| Format | Model Size | Compression |
+|--------|-----------|-------------|
+| FP32 (original) | 864 MB | -- |
+| Dynamic INT8 | 864 MB | Weights FP32, activations quantized at runtime |
+| Static INT8 | ~216 MB | 4x * |
+| 4-bit NF4 | ~108 MB | 8x * |
+
+\* Estimated based on theoretical compression ratios. Not yet benchmarked on this model.
 
 ### Quality Gate
 
@@ -131,7 +133,7 @@ SmolVLA (864 MB, ~450M params) — measured on NVIDIA RTX 5060 and Intel CPU. Al
 **torch.compile:**
 - Adds compilation overhead on SmolVLA (~500M params) — 27% slower than FP32
 - Compilation overhead dominates on smaller models; kernel fusion benefits emerge at scale where the JIT cost is amortized across many forward passes
-- Best for: Models with >1B params and static input shapes
+- Best for: Larger models where JIT cost is amortized across many forward passes
 
 ### Dynamic vs Static INT8
 
