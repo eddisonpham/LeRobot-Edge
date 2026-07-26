@@ -1,0 +1,39 @@
+"""Benchmarking, evaluation metrics, and reporting."""
+
+from lerobot_edge.evaluation.metrics import (
+    OutputDivergence,
+    QuantizationQualityReport,
+    bootstrap_confidence_interval,
+    compare_backends,
+    measure_output_divergence,
+)
+from lerobot_edge.evaluation.benchmark import (
+    BenchmarkResult,
+    benchmark_backend,
+    benchmark_policy_variants,
+    compare_results,
+    load_results,
+)
+from lerobot_edge.evaluation.report import (
+    aggregate_results,
+    generate_report,
+    generate_results_table,
+    plot_pareto_frontier,
+)
+
+__all__ = [
+    "OutputDivergence",
+    "QuantizationQualityReport",
+    "bootstrap_confidence_interval",
+    "compare_backends",
+    "measure_output_divergence",
+    "BenchmarkResult",
+    "benchmark_backend",
+    "benchmark_policy_variants",
+    "compare_results",
+    "load_results",
+    "aggregate_results",
+    "generate_report",
+    "generate_results_table",
+    "plot_pareto_frontier",
+]

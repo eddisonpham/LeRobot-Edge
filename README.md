@@ -2,68 +2,49 @@
 
 > Policy compression and edge deployment plugin for [HuggingFace LeRobot](https://github.com/huggingface/lerobot)
 
-**lerobot_edge** is a standalone extension package that plugs into LeRobot's policy system to add quantization, ONNX export, teacher-student distillation, and benchmarking for edge deployment.
+**lerobot_edge** is a standalone extension package that plugs into LeRobot's policy system to add quantization, ONNX export, teacher-student distillation, benchmarking, evaluation metrics, and experiment tracking for edge deployment.
 
 ## Architecture
 
 ```mermaid
 graph TD
     A[FP32 Checkpoint<br/>e.g. lerobot/smolvla_base] --> B{Compression Path}
-    B --> C[quantize.py<br/>INT8 / 4-bit]
-    B --> D[distill.py<br/>Teacher-Student]
+    B --> C[compression/<br/>INT8 / 4-bit]
+    B --> D[compression/<br/>Teacher-Student]
     C --> E[Compressed Model]
     D --> E
-    E --> F[export_onnx.py<br/>ONNX Runtime]
-    F --> G[export_tensorrt.py<br/>TensorRT GPU]
-    E --> H[benchmark.py<br/>Latency / Memory / Throughput]
+    E --> F[export/<br/>ONNX Runtime]
+    F --> G[export/<br/>TensorRT GPU]
+    E --> H[evaluation/<br/>Benchmark + Metrics]
     F --> H
     G --> H
-    H --> I[report.py<br/>Pareto Frontier]
+    H --> I[evaluation/<br/>Pareto Report]
+    I --> J[monitoring_pkg/<br/>W&B Tracking]
 ```
 
-## Quantization Pipeline
+### Package Layout
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant Q as quantize.py
-    participant M as Model
-    participant B as Backend
-
-    U->>Q: dynamic_int8_quantize(model)
-    Q->>M: Identify Linear layers
-    M-->>Q: List of quantizable layers
-    Q->>M: torch.quantization.quantize_dynamic()
-    M-->>Q: Quantized model
-    Q->>B: QuantizedBackend.from_policy()
-    B-->>Q: Wrapped backend
-    Q-->>U: CompressedPolicy ready
-
-    Note over U,Q: Static INT8 path
-    U->>Q: static_int8_quantize(model, calibration_data)
-    Q->>M: torch.quantization.prepare()
-    loop Calibration steps
-        M->>M: Forward pass with calibration data
-    end
-    M-->>Q: Prepared model
-    Q->>M: torch.quantization.convert()
-    M-->>Q: Quantized model
-    Q-->>U: CompressedPolicy ready
-
-    Note over U,Q: 4-bit path
-    U->>Q: quantize_4bit(model)
-    Q->>M: bitsandbytes.prepare_for_4bit()
-    M-->>Q: 4-bit model
-    Q-->>U: CompressedPolicy ready
+```
+lerobot_edge/
+  core/              # Backends, configs, router, utilities
+  compression/       # Quantization (INT8, 4-bit) and distillation
+  export/            # ONNX export and TensorRT export
+  evaluation/        # Benchmark harness, metrics, Pareto reports
+  monitoring_pkg/    # W&B experiment tracking, local JSON fallback
+  configs.py         # Config dataclasses (backward-compatible re-export)
+  quantize.py        # Quantization functions (backward-compatible re-export)
+  benchmark.py       # Benchmark harness (backward-compatible re-export)
+  ...
 ```
 
 ## Installation
 
 ```bash
 pip install lerobot-edge
-pip install "lerobot-edge[onnx]"        # with ONNX support
-pip install "lerobot-edge[quantize]"    # with bitsandbytes
-pip install "lerobot-edge[tensorrt]"    # with TensorRT (GPU)
+pip install "lerobot-edge[onnx]"        # ONNX support
+pip install "lerobot-edge[quantize]"    # bitsandbytes
+pip install "lerobot-edge[tensorrt]"    # TensorRT (GPU)
+pip install "lerobot-edge[wandb]"       # W&B experiment tracking
 pip install "lerobot-edge[all]"         # everything
 ```
 
@@ -107,6 +88,32 @@ lerobot-eval \
 | `edge_distilled` | Teacher-student distilled | Core |
 | `edge_distilled_onnx_int8` | Distilled + ONNX + INT8 | `lerobot-edge[onnx]` |
 
+## Makefile Commands
+
+```bash
+# Install
+make install            # pip install -e .
+make install-dev        # pip install -e ".[dev,all]"
+
+# Test
+make test               # run non-slow tests
+make test-all           # run all tests including integration
+make test-evaluation    # run evaluation + monitoring tests only
+
+# Lint
+make lint               # ruff check
+make format             # ruff format
+make typecheck          # mypy
+
+# Pipeline
+make benchmark CHECKPOINT=lerobot/smolvla_base OUTPUT_DIR=benchmark_results
+make quantize CHECKPOINT=lerobot/smolvla_base
+make evaluate OUTPUT_DIR=benchmark_results
+
+# CI
+make ci                 # install-dev + lint + typecheck + test
+```
+
 ## Benchmarking
 
 ```bash
@@ -121,36 +128,56 @@ lerobot-edge-report \
   --output-dir=docs
 ```
 
-## Development
+## Evaluation Metrics
 
-```bash
-pip install -e ".[dev]"
-pytest
-pytest --cov=lerobot_edge
-ruff check lerobot_edge/
+The `evaluation` module provides tools for assessing quantization quality:
+
+- **Output Divergence**: MSE, MAE, cosine similarity, max absolute error between original and quantized model outputs
+- **Quantization Quality Report**: Compression ratio, memory savings, speedup ratio, quality degradation
+- **Bootstrap Confidence Intervals**: Statistical confidence intervals for any metric
+- **Backend Comparison**: Side-by-side comparison of original vs quantized models
+
+```python
+from lerobot_edge.evaluation import compare_backends, bootstrap_confidence_interval
+
+# Compare original vs quantized model
+report = compare_backends(original_model, quantized_model, dummy_input, num_samples=10)
+print(report.to_dict())
+
+# Compute confidence intervals for latency measurements
+mean, lower, upper = bootstrap_confidence_interval(latency_list, confidence=0.95)
 ```
+
+## Experiment Tracking
+
+The `monitoring` module provides optional Weights & Biases integration:
+
+```python
+from lerobot_edge.monitoring import ExperimentTracker, TrackConfig
+
+config = TrackConfig(project="my-project", tags=["int8-quantization"])
+tracker = ExperimentTracker(config=config)
+
+tracker.init_run(run_name="quant-int8-v1")
+tracker.log_benchmark_result(result_dict)
+tracker.log_quality_report(quality_dict)
+tracker.log_artifact("model", "model", "quantized/model.pt")
+tracker.finish_run()
+```
+
+When W&B is not installed, the tracker falls back to local JSON logging in `wandb_logs/`.
 
 ## How the Plugin Works
 
 Config classes register with LeRobot's `draccus.ChoiceRegistry` via `@PreTrainedConfig.register_subclass("edge_*")`. The factory fallback discovers them by naming convention. Zero changes to LeRobot source required.
 
-```mermaid
-sequenceDiagram
-    participant U as User CLI
-    participant L as LeRobot Factory
-    participant E as lerobot_edge
-    participant P as Policy Model
-    
-    U->>L: lerobot-eval --policy.type=edge_quant_int8
-    L->>E: get_known_choices()
-    E-->>L: edge_quant_int8 found
-    L->>E: make_policy_config("edge_quant_int8")
-    E-->>L: EdgeQuantInt8Config
-    L->>E: make_policy(config)
-    E->>P: Load SmolVLA + Quantize
-    P-->>L: CompressedPolicy
-    L->>P: select_action(batch)
-    P-->>L: actions
+## Development
+
+```bash
+make install-dev
+make test
+make lint
+make ci
 ```
 
 ## Attribution
