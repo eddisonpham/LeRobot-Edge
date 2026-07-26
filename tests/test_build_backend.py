@@ -81,8 +81,9 @@ class TestBuildBackendQuantization:
         policy = CompressedPolicy.__new__(CompressedPolicy)
         policy.config = config
         mock_policy = SimplePolicy()
-        with patch("lerobot.policies.factory.make_policy", return_value=mock_policy), patch(
-            "lerobot.policies.factory.make_policy_config", return_value=MagicMock()
+        with (
+            patch("lerobot.policies.factory.make_policy", return_value=mock_policy),
+            patch("lerobot.policies.factory.make_policy_config", return_value=MagicMock()),
         ):
             backend = policy._build_backend_from_checkpoint("dummy", config)
         assert isinstance(backend, IdentityBackend)
@@ -92,8 +93,9 @@ class TestBuildBackendQuantization:
         policy = CompressedPolicy.__new__(CompressedPolicy)
         policy.config = config
         mock_policy = SimplePolicy()
-        with patch("lerobot.policies.factory.make_policy", return_value=mock_policy), patch(
-            "lerobot.policies.factory.make_policy_config", return_value=MagicMock()
+        with (
+            patch("lerobot.policies.factory.make_policy", return_value=mock_policy),
+            patch("lerobot.policies.factory.make_policy_config", return_value=MagicMock()),
         ):
             backend = policy._build_backend_from_checkpoint("dummy", config)
         from lerobot_edge.compression.quantize import QuantizedBackend
@@ -107,11 +109,13 @@ class TestBuildBackendFailureFallback:
         policy = CompressedPolicy.__new__(CompressedPolicy)
         policy.config = config
         mock_policy = SimplePolicy()
-        with patch("lerobot.policies.factory.make_policy", return_value=mock_policy), patch(
-            "lerobot.policies.factory.make_policy_config", return_value=MagicMock()
-        ), patch(
-            "lerobot_edge.export.onnx.export_policy_to_onnx",
-            side_effect=RuntimeError("export failed"),
+        with (
+            patch("lerobot.policies.factory.make_policy", return_value=mock_policy),
+            patch("lerobot.policies.factory.make_policy_config", return_value=MagicMock()),
+            patch(
+                "lerobot_edge.export.onnx.export_policy_to_onnx",
+                side_effect=RuntimeError("export failed"),
+            ),
         ):
             backend = policy._build_backend_from_checkpoint("dummy", config)
         assert isinstance(backend, IdentityBackend)
@@ -121,11 +125,13 @@ class TestBuildBackendFailureFallback:
         policy = CompressedPolicy.__new__(CompressedPolicy)
         policy.config = config
         mock_policy = SimplePolicy()
-        with patch("lerobot.policies.factory.make_policy", return_value=mock_policy), patch(
-            "lerobot.policies.factory.make_policy_config", return_value=MagicMock()
-        ), patch(
-            "lerobot_edge.export.onnx.export_policy_to_onnx",
-            side_effect=RuntimeError("export failed"),
+        with (
+            patch("lerobot.policies.factory.make_policy", return_value=mock_policy),
+            patch("lerobot.policies.factory.make_policy_config", return_value=MagicMock()),
+            patch(
+                "lerobot_edge.export.onnx.export_policy_to_onnx",
+                side_effect=RuntimeError("export failed"),
+            ),
         ):
             backend = policy._build_backend_from_checkpoint("dummy", config)
         assert isinstance(backend, IdentityBackend)
@@ -135,11 +141,13 @@ class TestBuildBackendFailureFallback:
         policy = CompressedPolicy.__new__(CompressedPolicy)
         policy.config = config
         mock_policy = SimplePolicy()
-        with patch("lerobot.policies.factory.make_policy", return_value=mock_policy), patch(
-            "lerobot.policies.factory.make_policy_config", return_value=MagicMock()
-        ), patch(
-            "lerobot_edge.compression.quantize.QuantizedBackend.from_policy",
-            side_effect=RuntimeError("quantize failed"),
+        with (
+            patch("lerobot.policies.factory.make_policy", return_value=mock_policy),
+            patch("lerobot.policies.factory.make_policy_config", return_value=MagicMock()),
+            patch(
+                "lerobot_edge.compression.quantize.QuantizedBackend.from_policy",
+                side_effect=RuntimeError("quantize failed"),
+            ),
         ):
             backend = policy._build_backend_from_checkpoint("dummy", config)
         assert isinstance(backend, IdentityBackend)

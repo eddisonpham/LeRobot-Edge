@@ -45,17 +45,19 @@ class TestNoTorchaoPaths:
         """dynamic_int8_quantize should raise ImportError without torchao."""
         from lerobot_edge.compression.quantize import dynamic_int8_quantize
 
-        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False):
-            with pytest.raises(ImportError, match="torchao is required"):
-                dynamic_int8_quantize(simple_model)
+        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False), pytest.raises(
+            ImportError, match="torchao is required"
+        ):
+            dynamic_int8_quantize(simple_model)
 
     def test_static_int8_raises_import_error(self, simple_model):
         """static_int8_quantize should raise ImportError without torchao."""
         from lerobot_edge.compression.quantize import static_int8_quantize
 
-        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False):
-            with pytest.raises(ImportError, match="torchao is required"):
-                static_int8_quantize(simple_model, {"x": torch.randn(1, 7)})
+        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False), pytest.raises(
+            ImportError, match="torchao is required"
+        ):
+            static_int8_quantize(simple_model, {"x": torch.randn(1, 7)})
 
     def test_quantized_backend_raises_import_error_without_torchao(self, simple_model):
         """QuantizedBackend.from_policy should raise ImportError when torchao is absent."""
@@ -63,9 +65,10 @@ class TestNoTorchaoPaths:
         from lerobot_edge.core.configs import EdgeQuantInt8Config
 
         config = EdgeQuantInt8Config(device="cpu")
-        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False):
-            with pytest.raises(ImportError, match="torchao is required"):
-                QuantizedBackend.from_policy(simple_model, config)
+        with patch("lerobot_edge.compression.quantize.HAS_TORCHAO", False), pytest.raises(
+            ImportError, match="torchao is required"
+        ):
+            QuantizedBackend.from_policy(simple_model, config)
 
     def test_has_torchao_flag_reflects_reality(self):
         """HAS_TORCHAO should match actual torchao availability."""

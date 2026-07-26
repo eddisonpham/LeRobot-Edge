@@ -52,15 +52,16 @@ class TestLoadPolicyFromCheckpoint:
         mock_factory_config = MagicMock(return_value=mock_config)
         mock_factory_make = MagicMock(return_value=mock_model)
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "lerobot.policies.factory": MagicMock(
-                    make_policy_config=mock_factory_config, make_policy=mock_factory_make
-                )
-            },
-        ), patch(
-            "lerobot_edge.core.utils.importlib.import_module", side_effect=mock_import_mod
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "lerobot.policies.factory": MagicMock(
+                        make_policy_config=mock_factory_config, make_policy=mock_factory_make
+                    )
+                },
+            ),
+            patch("lerobot_edge.core.utils.importlib.import_module", side_effect=mock_import_mod),
         ):
             result = load_policy_from_checkpoint("some/path", "smolvla", "cpu")
             assert result is mock_model
@@ -74,16 +75,19 @@ class TestLoadPolicyFromCheckpoint:
         mock_factory_config = MagicMock(return_value=mock_config)
         mock_factory_make = MagicMock(return_value=mock_model)
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "lerobot.policies.factory": MagicMock(
-                    make_policy_config=mock_factory_config, make_policy=mock_factory_make
-                )
-            },
-        ), patch(
-            "lerobot_edge.core.utils.importlib.import_module",
-            side_effect=RuntimeError("Connection error"),
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "lerobot.policies.factory": MagicMock(
+                        make_policy_config=mock_factory_config, make_policy=mock_factory_make
+                    )
+                },
+            ),
+            patch(
+                "lerobot_edge.core.utils.importlib.import_module",
+                side_effect=RuntimeError("Connection error"),
+            ),
         ):
             result = load_policy_from_checkpoint("some/path", "smolvla", "cpu")
             assert result is mock_model
@@ -106,10 +110,11 @@ class TestLoadPolicyFromCheckpoint:
         mock_config.device = None
         mock_model = SimplePolicy()
 
-        with patch(
-            "lerobot.policies.factory.make_policy_config", return_value=mock_config
-        ) as mock_make_config, patch(
-            "lerobot.policies.factory.make_policy", return_value=mock_model
+        with (
+            patch(
+                "lerobot.policies.factory.make_policy_config", return_value=mock_config
+            ) as mock_make_config,
+            patch("lerobot.policies.factory.make_policy", return_value=mock_model),
         ):
             result = load_policy_from_checkpoint("test/path", "act", "cpu")
             mock_make_config.assert_called_once_with("act")
