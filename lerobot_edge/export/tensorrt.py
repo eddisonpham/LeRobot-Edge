@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -102,6 +103,13 @@ class TensorRTBackend(DeploymentBackend):
         self._engine_path = Path(engine_path)
         self._device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        try:
+            import pycuda.driver as cuda
+            import pycuda.autoinit  # noqa: F401
+            self._cuda = cuda
+        except ImportError:
+            raise ImportError("pycuda is required for TensorRT inference. Install with: pip install pycuda")
+
         trt_logger = trt.Logger(trt.Logger.WARNING)
         runtime = trt.Runtime(trt_logger)
 
@@ -109,14 +117,63 @@ class TensorRTBackend(DeploymentBackend):
             self._engine = runtime.deserialize_cuda_engine(f.read())
 
         self._context = self._engine.create_execution_context()
+        self._stream = self._cuda.Stream()
 
         logger.info("TensorRT engine loaded from %s", self._engine_path)
 
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        raise NotImplementedError(
-            "TensorRTBackend.predict requires a fully initialized TensorRT engine "
-            "with proper I/O bindings."
-        )
+        cuda = self._cuda
+        device_allocs: list[int] = []
+
+        try:
+            for i in range(self._engine.num_io_tensors):
+                name = self._engine.get_tensor_name(i)
+                mode = self._engine.get_tensor_mode(name)
+                dtype_trt = self._engine.get_tensor_dtype(name)
+                dtype_np = trt.nptype(dtype_trt)
+
+                if mode == trt.TensorIOMode.INPUT:
+                    if name not in batch:
+                        raise ValueError(
+                            f"Missing required input '{name}' in batch. "
+                            f"Available keys: {list(batch.keys())}"
+                        )
+                    tensor = batch[name]
+                    host_data = tensor.detach().cpu().numpy().astype(dtype_np)
+                    shape = tuple(host_data.shape)
+                    self._context.set_input_shape(name, shape)
+                    device_mem = cuda.mem_alloc(host_data.nbytes)
+                    device_allocs.append(int(device_mem))
+                    self._context.set_tensor_address(name, int(device_mem))
+                    cuda.memcpy_htod_async(device_mem, host_data, self._stream)
+                else:
+                    shape = tuple(self._context.get_tensor_shape(name))
+                    host_data = np.empty(shape, dtype=dtype_np)
+                    device_mem = cuda.mem_alloc(host_data.nbytes)
+                    device_allocs.append(int(device_mem))
+                    self._context.set_tensor_address(name, int(device_mem))
+
+            self._context.execute_async_v3(stream_handle=self._stream.handle)
+
+            results: dict[str, np.ndarray] = {}
+            for i in range(self._engine.num_io_tensors):
+                name = self._engine.get_tensor_name(i)
+                mode = self._engine.get_tensor_mode(name)
+                if mode == trt.TensorIOMode.OUTPUT:
+                    dtype_np = trt.nptype(self._engine.get_tensor_dtype(name))
+                    shape = tuple(self._context.get_tensor_shape(name))
+                    host_data = np.empty(shape, dtype=dtype_np)
+                    cuda.memcpy_dtoh_async(host_data, self._context.get_tensor_address(name), self._stream)
+                    results[name] = host_data
+
+            self._stream.synchronize()
+
+            output_name = next(iter(results))
+            return torch.from_numpy(results[output_name]).to(self._device)
+
+        finally:
+            for ptr in device_allocs:
+                cuda.mem_free(ptr)
 
     def reset(self) -> None:
         pass

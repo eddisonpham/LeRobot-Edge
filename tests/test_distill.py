@@ -5,8 +5,9 @@ from __future__ import annotations
 import pytest
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
 
-from lerobot_edge.distill import DistillationLoss, DistilledBackend
+from lerobot_edge.distill import DistillationLoss, DistilledBackend, distill
 from lerobot_edge.configs import EdgeDistilledConfig
 
 

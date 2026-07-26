@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import abc
+import copy
 import logging
+from pathlib import Path
 from typing import Any
 
 import torch
 import torch.nn as nn
 
 from lerobot.policies.pretrained import PreTrainedPolicy
-from lerobot_edge.core.configs import EdgeBaseConfig
+from lerobot_edge.core.configs import (
+    EdgeBaseConfig,
+    EdgeOnnxFp32Config,
+    EdgeOnnxInt8Config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,9 +110,50 @@ class CompressedPolicy(PreTrainedPolicy):
     def _build_backend_from_checkpoint(
         self, path: str, config: EdgeBaseConfig
     ) -> DeploymentBackend:
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement _build_backend_from_checkpoint"
-        )
+        device = torch.device(config.device or "cpu")
+        source = path or config.source_pretrained_path
+        if source is None:
+            logger.warning("No source checkpoint provided. Using placeholder backend.")
+            return _PlaceholderBackend(str(device))
+
+        logger.info("Loading policy from %s", source)
+        try:
+            from lerobot.policies.factory import make_policy, make_policy_config
+
+            base_config = make_policy_config("smolvla")
+            base_config.pretrained_path = source
+            base_config.device = str(device)
+            policy = make_policy(base_config)
+            policy.eval()
+        except Exception as e:
+            logger.error("Failed to load policy from %s: %s", source, e)
+            return _PlaceholderBackend(str(device))
+
+        try:
+            if isinstance(config, EdgeOnnxInt8Config):
+                from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
+                onnx_path = export_policy_to_onnx(policy, config, Path("/tmp/lerobot_edge_onnx") / "model.onnx")
+                logger.info("Creating OnnxRuntimeBackend from %s", onnx_path)
+                return OnnxRuntimeBackend(str(onnx_path), device=device)
+
+            if isinstance(config, EdgeOnnxFp32Config):
+                from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
+                export_config = copy.deepcopy(config)
+                export_config.quantize_dynamic = False
+                onnx_path = export_policy_to_onnx(policy, export_config, Path("/tmp/lerobot_edge_onnx") / "model.onnx")
+                logger.info("Creating OnnxRuntimeBackend (FP32) from %s", onnx_path)
+                return OnnxRuntimeBackend(str(onnx_path), device=device)
+
+            if config.quantize_dynamic:
+                from lerobot_edge.compression.quantize import QuantizedBackend
+                logger.info("Creating QuantizedBackend (dynamic INT8)")
+                return QuantizedBackend.from_policy(policy, config)
+
+            logger.info("Creating IdentityBackend (no compression)")
+            return IdentityBackend(policy, device)
+        except Exception as e:
+            logger.warning("Backend creation failed: %s. Falling back to IdentityBackend.", e)
+            return IdentityBackend(policy, device)
 
     def select_action(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         if self._action_cache is not None and self._cache_idx < self._action_cache.shape[0]:
