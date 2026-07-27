@@ -57,8 +57,8 @@ class QualityGate:
 
         with torch.no_grad():
             for _ in range(self.num_samples):
-                o = original.select_action(dummy_input)
-                q = quantized.select_action(dummy_input)
+                o = original.select_action(dummy_input)  # type: ignore[operator]
+                q = quantized.select_action(dummy_input)  # type: ignore[operator]
                 orig_outputs.append(o if isinstance(o, torch.Tensor) else o[0])
                 quant_outputs.append(q if isinstance(q, torch.Tensor) else q[0])
 

@@ -58,11 +58,11 @@ class NativePyTorchBackend(DeploymentBackend):
 
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         with torch.no_grad():
-            return self._policy.select_action(batch)
+            return self._policy.select_action(batch)  # type: ignore[no-any-return,operator]
 
     def reset(self) -> None:
         if hasattr(self._policy, "reset"):
-            self._policy.reset()
+            self._policy.reset()  # type: ignore[operator]
 
     @property
     def device(self) -> torch.device:
@@ -111,7 +111,7 @@ class CompiledBackend(DeploymentBackend):
         logger.info("CompiledBackend created (mode=%s)", mode)
 
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        return self._compiled(batch)
+        return self._compiled(batch)  # type: ignore[no-any-return]
 
     def reset(self) -> None:
         self._backend.reset()

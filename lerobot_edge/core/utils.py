@@ -62,8 +62,8 @@ def measure_peak_memory_mb() -> float:
         try:
             import resource
 
-            usage = resource.getrusage(resource.RUSAGE_SELF)
-            return usage.ru_maxrss / 1024
+            usage = resource.getrusage(resource.RUSAGE_SELF)  # type: ignore[attr-defined]
+            return float(usage.ru_maxrss) / 1024
         except (ImportError, AttributeError):
             return 0.0
 
@@ -77,7 +77,7 @@ def build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torc
     """Build dummy input batch from policy's expected features."""
     dummy_input = {}
     if hasattr(policy, "config") and hasattr(policy.config, "input_features"):
-        for name, feature in policy.config.input_features.items():
+        for name, feature in policy.config.input_features.items():  # type: ignore[union-attr,operator]
             shape = list(feature.shape) if hasattr(feature, "shape") else [1, 3, 224, 224]
             if len(shape) == 0:
                 shape = [1]
@@ -130,7 +130,7 @@ def load_policy_from_checkpoint(
             model = cls.from_pretrained(checkpoint)
             model.to(device)
             model.eval()
-            return model
+            return model  # type: ignore[no-any-return]
         except Exception as e:
             logger.debug("from_pretrained failed for %s: %s", policy_type, e)
 
@@ -143,4 +143,4 @@ def load_policy_from_checkpoint(
     model = make_policy(config)
     model.to(device)
     model.eval()
-    return model
+    return model  # type: ignore[no-any-return]

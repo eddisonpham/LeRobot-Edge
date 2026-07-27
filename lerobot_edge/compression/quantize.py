@@ -58,17 +58,17 @@ if HAS_TORCHAO:
             act_obs: nn.Module,
             weight_obs: nn.Module,
             bias: bool = True,
-            device=None,
-            dtype=None,
-        ):
+            device: torch.device | None = None,
+            dtype: torch.dtype | None = None,
+        ) -> None:
             super().__init__()
             self.linear = nn.Linear(in_features, out_features, bias, device, dtype)
             self.act_obs = act_obs
             self.weight_obs = weight_obs
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
-            observed_input = self.act_obs(x)
-            observed_weight = self.weight_obs(self.linear.weight)
+            observed_input = self.act_obs(x)  # type: ignore[operator]
+            observed_weight = self.weight_obs(self.linear.weight)  # type: ignore[operator]
             return F.linear(observed_input, observed_weight, self.linear.bias)
 
         @classmethod
@@ -114,11 +114,7 @@ if HAS_TORCHAO:
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             block_size = (1,) + x.shape[1:]
             qinput = to_affine_quantized_intx_static(
-                x,
-                self.act_scale,
-                self.act_zero_point,
-                block_size,
-                self.target_dtype,
+                x, self.act_scale, self.act_zero_point, block_size, self.target_dtype  # type: ignore[operator]
             )
             return F.linear(qinput, self.qweight, self.bias)
 
@@ -142,14 +138,14 @@ if HAS_TORCHAO:
 
     @register_quantize_module_handler(StaticQuantConfig)
     def _apply_static_quant(module: nn.Module, config: StaticQuantConfig) -> QuantizedLinear:
-        return QuantizedLinear.from_observed(module, config.target_dtype)
+        return QuantizedLinear.from_observed(module, config.target_dtype)  # type: ignore[arg-type]
 
     def _insert_observers(model: nn.Module, act_obs: nn.Module, weight_obs: nn.Module) -> None:
         def _is_linear(m: nn.Module, fqn: str) -> bool:
             return isinstance(m, nn.Linear)
 
         def replacement_fn(m: nn.Module) -> ObservedLinear:
-            return ObservedLinear.from_float(m, copy.deepcopy(act_obs), copy.deepcopy(weight_obs))
+            return ObservedLinear.from_float(m, copy.deepcopy(act_obs), copy.deepcopy(weight_obs))  # type: ignore[arg-type]
 
         _replace_with_custom_fn_if_matches_filter(model, replacement_fn, _is_linear)
 
@@ -242,9 +238,7 @@ def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
     from bitsandbytes.nn.modules import Linear4bit
 
     linear_layers = [
-        (name, module)
-        for name, module in model.named_modules()
-        if isinstance(module, nn.Linear)
+        (name, module) for name, module in model.named_modules() if isinstance(module, nn.Linear)
     ]
     if not linear_layers:
         logger.warning("No nn.Linear modules found to quantize.")
@@ -283,9 +277,7 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
     from bitsandbytes.nn import Int8Params, Linear8bitLt
 
     linear_layers = [
-        (name, module)
-        for name, module in model.named_modules()
-        if isinstance(module, nn.Linear)
+        (name, module) for name, module in model.named_modules() if isinstance(module, nn.Linear)
     ]
     if not linear_layers:
         logger.warning("No nn.Linear modules found to quantize.")
@@ -302,9 +294,7 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
             has_fp16_weights=False,
             threshold=6.0,
         )
-        new_layer.weight = Int8Params(
-            module.weight.data.half(), requires_grad=False
-        )
+        new_layer.weight = Int8Params(module.weight.data.half(), requires_grad=False)
         if module.bias is not None:
             new_layer.bias = nn.Parameter(module.bias.half(), requires_grad=False)
         setattr(parent, child_name, new_layer)

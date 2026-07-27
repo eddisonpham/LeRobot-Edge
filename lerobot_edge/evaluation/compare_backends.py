@@ -35,27 +35,27 @@ __all__ = ["compare_all_backends", "print_comparison"]
 
 
 class _SimpleModel(nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.layer1 = nn.Linear(7, 64)
         self.layer2 = nn.Linear(64, 32)
         self.layer3 = nn.Linear(32, 2)
         self.relu = nn.ReLU()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layer3(self.relu(self.layer2(self.relu(self.layer1(x)))))
 
-    def select_action(self, batch):
+    def select_action(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         for val in batch.values():
             if isinstance(val, torch.Tensor) and val.dim() == 2:
-                return self.forward(val)
-        return self.forward(list(batch.values())[0])
+                return self.forward(val)  # type: ignore[no-any-return]
+        return self.forward(list(batch.values())[0])  # type: ignore[no-any-return]
 
-    def reset(self):
+    def reset(self) -> None:
         return
 
 
-def _simple_model():
+def _simple_model() -> tuple[_SimpleModel, dict[str, torch.Tensor]]:
     return _SimpleModel(), {"observation.state": torch.randn(1, 7)}
 
 
@@ -198,7 +198,17 @@ def compare_all_backends(
     return results
 
 
-def _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, key, config_cls, filename):
+def _bench_onnx(
+    model: nn.Module,
+    dummy_input: dict[str, torch.Tensor],
+    dev: torch.device,
+    warmup: int,
+    num_runs: int,
+    results: dict[str, Any],
+    key: str,
+    config_cls: Any,
+    filename: str,
+) -> None:
     try:
         from lerobot_edge.export.onnx import (
             HAS_ONNX,
@@ -221,7 +231,13 @@ def _bench_onnx(model, dummy_input, dev, warmup, num_runs, results, key, config_
         logger.warning("ONNX benchmark failed (%s): %s", key, e)
 
 
-def _bench_backend(backend, dummy_input, warmup, num_runs, is_compiled=False):
+def _bench_backend(
+    backend: Any,
+    dummy_input: dict[str, torch.Tensor],
+    warmup: int,
+    num_runs: int,
+    is_compiled: bool = False,
+) -> dict[str, Any]:
     device = backend.device
     inp = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in dummy_input.items()}
 

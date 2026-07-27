@@ -124,9 +124,9 @@ def distill(
             batch = {k: v.to(dev) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
             with torch.no_grad():
-                teacher_actions = teacher.select_action(batch)
+                teacher_actions = teacher.select_action(batch)  # type: ignore[operator]
 
-            student_actions = student.select_action(batch)
+            student_actions = student.select_action(batch)  # type: ignore[operator]
             loss = criterion(student_actions, teacher_actions)
 
             optimizer.zero_grad()
@@ -196,8 +196,8 @@ def _validate(
                 k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()
             }
 
-            teacher_actions = teacher.select_action(batch)
-            student_actions = student.select_action(batch)
+            teacher_actions = teacher.select_action(batch)  # type: ignore[operator]
+            student_actions = student.select_action(batch)  # type: ignore[operator]
 
             loss = criterion(student_actions, teacher_actions)
             total_loss += loss.item()

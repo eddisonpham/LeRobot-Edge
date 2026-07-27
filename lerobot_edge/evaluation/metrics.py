@@ -155,7 +155,7 @@ def measure_output_divergence(
         mae=sum(all_mae) / total_samples,
         cosine_similarity=sum(all_cosine) / total_samples,
         max_abs_error=max(all_max_err),
-        relative_error_pct=np.mean(all_rel_err),
+        relative_error_pct=float(np.mean(all_rel_err)),
         num_samples=total_samples,
     )
 
@@ -196,13 +196,13 @@ def compare_backends(
     for _ in range(num_samples):
         t0 = time.perf_counter()
         with torch.no_grad():
-            out = original.select_action(dummy_input)
+            out = original.select_action(dummy_input)  # type: ignore[operator]
         latencies_orig.append((time.perf_counter() - t0) * 1000)
         orig_outputs.append(out if isinstance(out, torch.Tensor) else out[0])
 
         t0 = time.perf_counter()
         with torch.no_grad():
-            out = quantized.select_action(dummy_input)
+            out = quantized.select_action(dummy_input)  # type: ignore[operator]
         latencies_quant.append((time.perf_counter() - t0) * 1000)
         quant_outputs.append(out if isinstance(out, torch.Tensor) else out[0])
 
@@ -210,8 +210,8 @@ def compare_backends(
 
     return QuantizationQualityReport(
         variant_name=type(quantized).__name__,
-        original_params=orig_mem["num_parameters"],
-        quantized_params=quant_mem["num_parameters"],
+        original_params=int(orig_mem["num_parameters"]),
+        quantized_params=int(quant_mem["num_parameters"]),
         original_size_mb=orig_mem["total_mb"],
         quantized_size_mb=quant_mem["total_mb"],
         divergence=divergence,

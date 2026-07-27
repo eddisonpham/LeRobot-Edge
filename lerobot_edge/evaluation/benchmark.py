@@ -139,7 +139,7 @@ def benchmark_backend(
         throughput_fps=throughput,
         peak_memory_mb=peak_mem,
         param_memory_mb=model_mem["param_mb"],
-        num_parameters=model_mem["num_parameters"],
+        num_parameters=int(model_mem["num_parameters"]),
         model_size_mb=model_mem["total_mb"],
         warmup_runs=warmup_runs,
         benchmark_runs=num_runs,
@@ -293,7 +293,7 @@ def main() -> None:
     logger.info("Device profile: %s", args.device_profile)
 
     from lerobot_edge.compression.quantize import QuantizedBackend
-    from lerobot_edge.core.base import IdentityBackend, NativePyTorchBackend
+    from lerobot_edge.core.base import IdentityBackend
     from lerobot_edge.core.configs import (
         EdgeIdentityConfig,
         EdgeOnnxFp32Config,
@@ -313,7 +313,7 @@ def main() -> None:
 
     dummy_input = build_dummy_input(policy, device)
 
-    variants: dict[str, NativePyTorchBackend] = {}
+    variants: dict[str, DeploymentBackend] = {}
     variant_config_map = {
         "edge_identity": EdgeIdentityConfig,
         "edge_quant_int8": EdgeQuantInt8Config,
@@ -340,12 +340,12 @@ def main() -> None:
         return
 
     results = benchmark_policy_variants(
-        variants,
+        variants,  # type: ignore[arg-type]
         dummy_input,
         device_profile=args.device_profile,
         output_dir=args.output_dir,
         warmup_runs=args.warmup,
-        num_runs=args.num_runs,
+        num_runs=args.num_runsn,
     )
 
     print("\n" + "=" * 80)

@@ -106,16 +106,16 @@ def plot_pareto_frontier(
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
 
     backend_names = list(set(r.backend_name for r in plotted))
-    colors = plt.cm.Set2(np.linspace(0, 1, len(backend_names)))
+    colors = plt.cm.Set2(np.linspace(0, 1, len(backend_names)))  # type: ignore[attr-defined]
     color_map = dict(zip(backend_names, colors, strict=False))
 
     for r in plotted:
         x = r.latency_mean_ms if x_metric == "latency" else r.peak_memory_mb
         color = color_map[r.backend_name]
-        ax.scatter(x, r.success_rate, c=[color], s=100, alpha=0.8, edgecolors="black")
+        ax.scatter(x, r.success_rate, c=[color], s=100, alpha=0.8, edgecolors="black")  # type: ignore[arg-type]
         ax.annotate(
             r.backend_name,
-            (x, r.success_rate),
+            (x, r.success_rate),  # type: ignore[arg-type]
             textcoords="offset points",
             xytext=(5, 5),
             fontsize=8,
@@ -138,8 +138,10 @@ def plot_pareto_frontier(
                 max_y = y
 
         if frontier:
-            frontier = np.array(frontier)
-            ax.plot(frontier[:, 0], frontier[:, 1], "r--", alpha=0.5, label="Pareto Frontier")
+            frontier_arr = np.array(frontier)  # type: ignore[assignment]
+            ax.plot(
+                frontier_arr[:, 0], frontier_arr[:, 1], "r--", alpha=0.5, label="Pareto Frontier"
+            )
 
     x_label = "Latency (ms)" if x_metric == "latency" else "Peak Memory (MB)"
     ax.set_xlabel(x_label, fontsize=12)
