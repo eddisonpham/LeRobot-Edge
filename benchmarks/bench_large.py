@@ -1,12 +1,13 @@
-"""Benchmark quantization speedup on large transformer models (1B+ params).
+"""Benchmark quantization across batch sizes to show when it actually helps.
 
-Tests FP32, FP16, bitsandbytes INT8, and NF4 on memory-bandwidth-bound
-models where quantization actually helps.
+The key insight: quantization reduces memory bandwidth, which only translates
+to speedup when the model is memory-bandwidth-bound (large batch, large model)
+or when torch.compile fuses the dequantization kernels.
 
 Usage:
+    python -m benchmarks.bench_large --device cuda --config 1b
     python -m benchmarks.bench_large --device cpu --config 1b
-    python -m benchmarks.bench_large --device cuda --config 2b
-    python -m benchmarks.bench_large --device cpu --config custom --layers 32 --dim 2048
+    python -m benchmarks.bench_large --device cuda --config 1b --compile
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ MODEL_CONFIGS: dict[str, dict[str, int]] = {
     "1b": {"layers": 32, "dim": 2048},
     "2b": {"layers": 40, "dim": 2560},
     "3b": {"layers": 32, "dim": 3072},
-    "7b": {"layers": 32, "dim": 4096},
 }
 
 
@@ -75,6 +75,7 @@ class BenchResult:
     p50_ms: float
     p95_ms: float
     fps: float
+    throughput: float  # samples/sec = batch_size / latency_sec
     memory_mb: float
 
 
@@ -88,30 +89,36 @@ def measure_memory_mb(model: nn.Module) -> float:
     return (total + buffers) / (1024 * 1024)
 
 
-def bench_latency(fn, dummy_input: dict, warmup: int = 20, num_runs: int = 200) -> BenchResult:
+def bench_latency(
+    fn, dummy_input: dict, warmup: int = 20, num_runs: int = 200, batch_size: int = 1
+) -> BenchResult:
     for _ in range(warmup):
         fn(dummy_input)
     latencies = []
+    is_cuda = torch.cuda.is_available()
     with torch.no_grad():
         for _ in range(num_runs):
-            if torch.cuda.is_available():
+            if is_cuda:
                 torch.cuda.synchronize()
             start = time.perf_counter()
             fn(dummy_input)
-            if torch.cuda.is_available():
+            if is_cuda:
                 torch.cuda.synchronize()
             latencies.append((time.perf_counter() - start) * 1000)
     arr = np.array(latencies)
+    mean_ms = float(np.mean(arr))
+    throughput = (batch_size / (mean_ms / 1000.0)) if mean_ms > 0 else 0
     return BenchResult(
-        mean_ms=float(np.mean(arr)),
+        mean_ms=mean_ms,
         p50_ms=float(np.percentile(arr, 50)),
         p95_ms=float(np.percentile(arr, 95)),
-        fps=1000.0 / float(np.mean(arr)) if np.mean(arr) > 0 else 0,
+        fps=1000.0 / mean_ms if mean_ms > 0 else 0,
+        throughput=throughput,
         memory_mb=0.0,
     )
 
 
-def quantize_bnb_int8(model: nn.Module) -> nn.Module:
+def quantize_bnb_int8(model: nn.Module, min_out_features: int = 16) -> nn.Module:
     from bitsandbytes.nn import Int8Params, Linear8bitLt
 
     quantized = copy.deepcopy(model)
@@ -121,8 +128,12 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
         if isinstance(module, nn.Linear)
     ]
     modules_dict = dict(quantized.named_modules())
+    skipped = 0
 
     for name, module in linear_layers:
+        if module.out_features < min_out_features:
+            skipped += 1
+            continue
         parent_name, _, child_name = name.rpartition(".")
         parent = modules_dict[parent_name] if parent_name else quantized
         new_layer = Linear8bitLt(
@@ -137,38 +148,59 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
             new_layer.bias = nn.Parameter(module.bias.half(), requires_grad=False)
         setattr(parent, child_name, new_layer)
 
+    if skipped:
+        logger.info("INT8: skipped %d layers with out_features < %d", skipped, min_out_features)
     return quantized
 
 
-def quantize_nf4(model: nn.Module) -> nn.Module:
-    import bitsandbytes as bnb
+def quantize_nf4(model: nn.Module, device: torch.device | None = None) -> nn.Module:
     from bitsandbytes.nn import Linear4bit, Params4bit
+    import bitsandbytes as bnb
 
     quantized = copy.deepcopy(model)
+    if device is not None:
+        quantized = quantized.to(device)
     linear_layers = [
         (name, module)
         for name, module in quantized.named_modules()
         if isinstance(module, nn.Linear)
     ]
     modules_dict = dict(quantized.named_modules())
+    compute_dtype = torch.float16 if (device and device.type == "cuda") else torch.float32
 
     for name, module in linear_layers:
         parent_name, _, child_name = name.rpartition(".")
         parent = modules_dict[parent_name] if parent_name else quantized
+        w4, state = bnb.functional.quantize_4bit(
+            module.weight.data.float(), quant_type="nf4"
+        )
         new_layer = Linear4bit(
             module.in_features,
             module.out_features,
             bias=module.bias is not None,
-            compute_dtype=module.weight.dtype,
+            compute_dtype=compute_dtype,
             quant_type="nf4",
         )
-        w4, state = bnb.functional.quantize_4bit(module.weight.data, quant_type="nf4")
-        new_layer.weight = Params4bit(w4, requires_grad=False, quant_type="nf4", quant_state=state)
+        new_layer.weight = Params4bit(
+            w4, requires_grad=False, quant_type="nf4", quant_state=state
+        )
         if module.bias is not None:
-            new_layer.bias = nn.Parameter(module.bias.data.clone(), requires_grad=False)
+            new_layer.bias = nn.Parameter(
+                module.bias.data.clone(), requires_grad=False
+            )
         setattr(parent, child_name, new_layer)
 
     return quantized
+
+
+def maybe_compile(model: nn.Module, use_compile: bool) -> nn.Module:
+    if use_compile:
+        try:
+            model = torch.compile(model, mode="reduce-overhead")
+            logger.info("Applied torch.compile with reduce-overhead mode")
+        except Exception as e:
+            logger.warning("torch.compile failed: %s", e)
+    return model
 
 
 def run_benchmark(
@@ -176,8 +208,13 @@ def run_benchmark(
     layers: int = 24,
     dim: int = 2048,
     config_name: str = "custom",
+    batch_sizes: list[int] | None = None,
+    use_compile: bool = False,
 ) -> dict:
     dev = torch.device(device)
+    if batch_sizes is None:
+        batch_sizes = [1, 4, 16, 64] if device == "cuda" else [1, 4, 16]
+
     logger.info("Building model: %s (layers=%d, dim=%d) on %s", config_name, layers, dim, device)
 
     model = TransformerModel(layers=layers, dim=dim).to(dev).eval()
@@ -185,12 +222,9 @@ def run_benchmark(
     fp32_mem = measure_memory_mb(model)
     logger.info(
         "Model: %d params (%.1fM), FP32 memory: %.1f MB",
-        num_params,
-        num_params / 1e6,
-        fp32_mem,
+        num_params, num_params / 1e6, fp32_mem,
     )
 
-    dummy = {"observation.state": torch.randn(1, 7, device=dev)}
     warmup = 30 if device == "cuda" else 10
     num_runs = 300 if device == "cuda" else 200
 
@@ -201,87 +235,125 @@ def run_benchmark(
         "fp32_memory_mb": fp32_mem,
         "layers": layers,
         "dim": dim,
+        "batch_sizes": batch_sizes,
+        "compiled": use_compile,
     }
 
-    def fp32_fn(batch: dict) -> torch.Tensor:
-        with torch.no_grad():
-            return model(batch["observation.state"])  # noqa: F821
+    # --- FP32 baseline ---
+    fp32_compiled = maybe_compile(model, use_compile)
+    fp32_results = {}
+    for bs in batch_sizes:
+        dummy = {"observation.state": torch.randn(bs, 7, device=dev)}
 
-    logger.info("Benchmarking FP32...")
-    fp32 = bench_latency(fp32_fn, dummy, warmup, num_runs)
-    fp32.memory_mb = fp32_mem
+        def fp32_fn(batch: dict, _m: nn.Module = fp32_compiled) -> torch.Tensor:
+            with torch.no_grad():
+                return _m(batch["observation.state"])
+
+        r = bench_latency(fp32_fn, dummy, warmup, num_runs, bs)
+        r.memory_mb = fp32_mem
+        fp32_results[bs] = r
+        logger.info("FP32  bs=%-3d: %.2f ms  (%6.0f samples/s)", bs, r.mean_ms, r.throughput)
+
     results["fp32"] = {
-        "mean_ms": fp32.mean_ms,
-        "p50_ms": fp32.p50_ms,
-        "p95_ms": fp32.p95_ms,
-        "fps": fp32.fps,
+        str(bs): {"mean_ms": r.mean_ms, "p50_ms": r.p50_ms, "throughput": r.throughput}
+        for bs, r in fp32_results.items()
     }
-    logger.info("FP32: %.2f ms (%.0f fps)", fp32.mean_ms, fp32.fps)
 
-    logger.info("Benchmarking FP16...")
-    fp16_model = copy.deepcopy(model).half().to(dev).eval()
+    # --- FP16 ---
+    fp16_model = maybe_compile(copy.deepcopy(model).half().to(dev).eval(), use_compile)
     fp16_mem = measure_memory_mb(fp16_model)
     results["fp16_memory_mb"] = fp16_mem
 
-    def fp16_fn(batch: dict) -> torch.Tensor:
-        with torch.no_grad():
-            x = batch["observation.state"]
-            if x.dtype != torch.float16:
-                x = x.half()
-            return fp16_model(x)  # noqa: F821
+    fp16_results = {}
+    for bs in batch_sizes:
+        dummy = {"observation.state": torch.randn(bs, 7, device=dev)}
 
-    fp16 = bench_latency(fp16_fn, dummy, warmup, num_runs)
-    fp16.memory_mb = fp16_mem
+        def fp16_fn(batch: dict, _m: nn.Module = fp16_model) -> torch.Tensor:
+            with torch.no_grad():
+                x = batch["observation.state"]
+                if x.dtype != torch.float16:
+                    x = x.half()
+                return _m(x)
+
+        r = bench_latency(fp16_fn, dummy, warmup, num_runs, bs)
+        r.memory_mb = fp16_mem
+        fp16_results[bs] = r
+        logger.info("FP16  bs=%-3d: %.2f ms  (%6.0f samples/s)", bs, r.mean_ms, r.throughput)
+
     results["fp16"] = {
-        "mean_ms": fp16.mean_ms,
-        "p50_ms": fp16.p50_ms,
-        "p95_ms": fp16.p95_ms,
-        "fps": fp16.fps,
+        str(bs): {"mean_ms": r.mean_ms, "p50_ms": r.p50_ms, "throughput": r.throughput}
+        for bs, r in fp16_results.items()
     }
-    logger.info("FP16: %.2f ms (%.0f fps), memory: %.1f MB", fp16.mean_ms, fp16.fps, fp16_mem)
 
-    logger.info("Quantizing to bnb INT8...")
-    int8_model = quantize_bnb_int8(model).to(dev).eval()
-    int8_mem = measure_memory_mb(int8_model)
-    results["int8_memory_mb"] = int8_mem
-
-    def int8_fn(batch: dict) -> torch.Tensor:
-        with torch.no_grad():
-            return int8_model(batch["observation.state"])  # noqa: F821
-
-    int8 = bench_latency(int8_fn, dummy, warmup, num_runs)
-    int8.memory_mb = int8_mem
-    results["int8"] = {
-        "mean_ms": int8.mean_ms,
-        "p50_ms": int8.p50_ms,
-        "p95_ms": int8.p95_ms,
-        "fps": int8.fps,
-    }
-    logger.info("INT8: %.2f ms (%.0f fps), memory: %.1f MB", int8.mean_ms, int8.fps, int8_mem)
-
+    # --- INT8 ---
+    int8_results = {}
+    int8_model = None
     try:
-        logger.info("Quantizing to NF4...")
-        nf4_model = quantize_nf4(model).to(dev).eval()
+        int8_model = quantize_bnb_int8(model).to(dev).eval()
+        int8_model = maybe_compile(int8_model, use_compile)
+        int8_mem = measure_memory_mb(int8_model)
+        results["int8_memory_mb"] = int8_mem
+
+        for bs in batch_sizes:
+            dummy = {"observation.state": torch.randn(bs, 7, device=dev)}
+
+            def int8_fn(batch: dict, _m: nn.Module = int8_model) -> torch.Tensor:
+                with torch.no_grad():
+                    return _m(batch["observation.state"])
+
+            try:
+                r = bench_latency(int8_fn, dummy, warmup, num_runs, bs)
+                r.memory_mb = int8_mem
+                int8_results[bs] = r
+                logger.info("INT8  bs=%-3d: %.2f ms  (%6.0f samples/s)", bs, r.mean_ms, r.throughput)
+            except Exception as e:
+                logger.warning("INT8 failed at bs=%d: %s", bs, e)
+
+        if int8_results:
+            results["int8"] = {
+                str(bs): {"mean_ms": r.mean_ms, "p50_ms": r.p50_ms, "throughput": r.throughput}
+                for bs, r in int8_results.items()
+            }
+    except Exception as e:
+        logger.warning("INT8 quantization failed: %s", e)
+
+    # --- NF4 ---
+    nf4_results = {}
+    nf4_model = None
+    try:
+        nf4_model = quantize_nf4(model, device=dev)
+        nf4_model = maybe_compile(nf4_model.eval(), use_compile)
         nf4_mem = measure_memory_mb(nf4_model)
         results["nf4_memory_mb"] = nf4_mem
 
-        def nf4_fn(batch: dict) -> torch.Tensor:
-            with torch.no_grad():
-                return nf4_model(batch["observation.state"])
+        for bs in batch_sizes:
+            dummy = {"observation.state": torch.randn(bs, 7, device=dev)}
 
-        nf4 = bench_latency(nf4_fn, dummy, warmup, num_runs)
-        nf4.memory_mb = nf4_mem
-        results["nf4"] = {
-            "mean_ms": nf4.mean_ms,
-            "p50_ms": nf4.p50_ms,
-            "p95_ms": nf4.p95_ms,
-            "fps": nf4.fps,
-        }
-        logger.info("NF4: %.2f ms (%.0f fps), memory: %.1f MB", nf4.mean_ms, nf4.fps, nf4_mem)
+            def nf4_fn(batch: dict, _m: nn.Module = nf4_model) -> torch.Tensor:
+                with torch.no_grad():
+                    return _m(batch["observation.state"])
+
+            try:
+                r = bench_latency(nf4_fn, dummy, warmup, num_runs, bs)
+                r.memory_mb = nf4_mem
+                nf4_results[bs] = r
+                logger.info("NF4   bs=%-3d: %.2f ms  (%6.0f samples/s)", bs, r.mean_ms, r.throughput)
+            except Exception as e:
+                logger.warning("NF4 failed at bs=%d: %s", bs, e)
+
+        if nf4_results:
+            results["nf4"] = {
+                str(bs): {"mean_ms": r.mean_ms, "p50_ms": r.p50_ms, "throughput": r.throughput}
+                for bs, r in nf4_results.items()
+            }
     except Exception as e:
-        logger.warning("NF4 quantization failed: %s", e)
+        logger.warning("NF4 failed: %s", e)
 
-    del model, fp16_model, int8_model  # noqa: F821
+    del model, fp16_model, fp32_compiled
+    if int8_model is not None:
+        del int8_model
+    if nf4_model is not None:
+        del nf4_model
     gc.collect()
     if device == "cuda":
         torch.cuda.empty_cache()
@@ -290,71 +362,80 @@ def run_benchmark(
 
 
 def print_results(results: dict) -> None:
-    print("\n" + "=" * 80)
-    print(f"MODEL BENCHMARK — {results['device'].upper()}")
-    print(
-        f"Config: {results['config']} | Params: {results['model_params'] / 1e6:.0f}M | "
-        f"Layers: {results['layers']} | Dim: {results['dim']}"
-    )
-    print("=" * 80)
-    print(f"{'Backend':<25} {'Latency (ms)':<15} {'FPS':<10} {'Memory (MB)':<12} {'Speedup':<10}")
-    print("-" * 80)
+    device = results["device"].upper()
+    config = results["config"]
+    params_m = results["model_params"] / 1e6
+    compiled = " (torch.compile)" if results.get("compiled") else ""
+    batch_sizes = results["batch_sizes"]
 
-    fp32_ms = results["fp32"]["mean_ms"]
+    print(f"\n{'=' * 90}")
+    print(f"BENCHMARK — {device}{compiled}")
+    print(f"Config: {config} | Params: {params_m:.0f}M | Layers: {results['layers']} | Dim: {results['dim']}")
+    print(f"{'=' * 90}")
+
+    header = f"{'Backend':<22}"
+    for bs in batch_sizes:
+        header += f"  {'bs=' + str(bs):>18}"
+    print(header)
+    print("-" * 90)
+
     fp32_mem = results["fp32_memory_mb"]
 
-    print(
-        f"{'FP32 (baseline)':<25} {fp32_ms:>8.2f}      "
-        f"{results['fp32']['fps']:>6.0f}    {fp32_mem:>8.1f}     {'1.00x':>8}"
-    )
+    # FP32 row
+    row = f"{'FP32':<22}"
+    for bs in batch_sizes:
+        r = results["fp32"][str(bs)]
+        row += f"  {r['mean_ms']:>7.1f}ms/{r['throughput']:>6.0f}sp"
+    print(row)
 
-    for key, label in [
-        ("fp16", "FP16"),
-        ("int8", "INT8 (bitsandbytes)"),
-        ("nf4", "NF4 (bitsandbytes)"),
+    # Quantized rows
+    for key, label, mem_key in [
+        ("fp16", "FP16", "fp16_memory_mb"),
+        ("int8", "INT8", "int8_memory_mb"),
+        ("nf4", "NF4", "nf4_memory_mb"),
     ]:
-        if key in results:
-            ms = results[key]["mean_ms"]
-            fps = results[key]["fps"]
-            mem = results[f"{key}_memory_mb"]
-            speedup = fp32_ms / ms if ms > 0 else 0
-            print(f"{label:<25} {ms:>8.2f}      {fps:>6.0f}    {mem:>8.1f}     {speedup:>6.2f}x")
+        if key not in results:
+            continue
+        row = f"{label:<22}"
+        for bs in batch_sizes:
+            r = results[key][str(bs)]
+            fp32_t = results["fp32"][str(bs)]["throughput"]
+            speedup = r["throughput"] / fp32_t if fp32_t > 0 else 0
+            row += f"  {r['mean_ms']:>7.1f}ms/{speedup:>5.2f}x"
+        print(row)
 
-    print("=" * 80)
+    # Memory row
+    mem_row = f"{'Memory':<22}"
+    for bs in batch_sizes:
+        mem_row += f"  {'':>18}"
+    print()
+    print(f"  FP32 memory: {fp32_mem:.1f} MB")
+    if "fp16_memory_mb" in results:
+        print(f"  FP16 memory: {results['fp16_memory_mb']:.1f} MB ({results['fp16_memory_mb']/fp32_mem:.2f}x)")
+    if "int8_memory_mb" in results:
+        print(f"  INT8 memory: {results['int8_memory_mb']:.1f} MB ({results['int8_memory_mb']/fp32_mem:.2f}x)")
+    if "nf4_memory_mb" in results:
+        print(f"  NF4  memory: {results['nf4_memory_mb']:.1f} MB ({results['nf4_memory_mb']/fp32_mem:.2f}x)")
 
-    print("\nANALYSIS:")
-    if "fp16" in results:
-        fp16_speedup = fp32_ms / results["fp16"]["mean_ms"]
-        fp16_mem_ratio = results["fp16_memory_mb"] / fp32_mem
-        print(f"  FP16:  {fp16_speedup:.2f}x latency, {fp16_mem_ratio:.2f}x memory")
-    if "int8" in results:
-        int8_speedup = fp32_ms / results["int8"]["mean_ms"]
-        int8_mem_ratio = results["int8_memory_mb"] / fp32_mem
-        print(f"  INT8:  {int8_speedup:.2f}x latency, {int8_mem_ratio:.2f}x memory")
-    if "nf4" in results:
-        nf4_speedup = fp32_ms / results["nf4"]["mean_ms"]
-        nf4_mem_ratio = results["nf4_memory_mb"] / fp32_mem
-        print(f"  NF4:   {nf4_speedup:.2f}x latency, {nf4_mem_ratio:.2f}x memory")
-
-    print("\nNOTES:")
-    print("  - FP16 halves memory bandwidth pressure, giving real speedup.")
-    print("  - INT8/NF4 reduce memory further but add kernel overhead.")
-    print("  - Speedup appears on larger models where memory bandwidth is the bottleneck.")
-    print("  - For batch=1 on CPU, kernel launch overhead dominates on small models.\n")
+    print(f"\n{'=' * 90}")
+    print("INTERPRETATION:")
+    print("  Throughput (sp) = batch_size / latency_sec. Higher = better.")
+    print("  At small batch, kernel launch overhead dominates — FP16 often wins.")
+    print("  At large batch, reduced memory bandwidth from INT8/NF4 shows real speedup.")
+    print("  torch.compile fuses dequant kernels, giving INT8/NF4 a real chance.")
+    print()
 
 
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Benchmark quantization on large models")
+    parser = argparse.ArgumentParser(description="Benchmark quantization across batch sizes")
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
-    parser.add_argument(
-        "--config",
-        default="1b",
-        choices=list(MODEL_CONFIGS.keys()) + ["custom"],
-    )
+    parser.add_argument("--config", default="1b", choices=list(MODEL_CONFIGS.keys()) + ["custom"])
     parser.add_argument("--layers", type=int, default=None)
     parser.add_argument("--dim", type=int, default=None)
+    parser.add_argument("--compile", action="store_true", help="Enable torch.compile")
+    parser.add_argument("--batch-sizes", type=str, default=None, help="Comma-separated batch sizes")
     parser.add_argument("--output", default="benchmark_results/large_benchmark.json")
     args = parser.parse_args()
 
@@ -366,7 +447,9 @@ def main() -> None:
         cfg = MODEL_CONFIGS[args.config]
         layers, dim = cfg["layers"], cfg["dim"]
 
-    results = run_benchmark(args.device, layers, dim, args.config)
+    batch_sizes = [int(x) for x in args.batch_sizes.split(",")] if args.batch_sizes else None
+
+    results = run_benchmark(args.device, layers, dim, args.config, batch_sizes, args.compile)
     print_results(results)
 
     output_path = Path(args.output)
