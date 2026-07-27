@@ -114,7 +114,11 @@ if HAS_TORCHAO:
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             block_size = (1,) + x.shape[1:]
             qinput = to_affine_quantized_intx_static(
-                x, self.act_scale, self.act_zero_point, block_size, self.target_dtype  # type: ignore[operator]
+                x,
+                self.act_scale,
+                self.act_zero_point,
+                block_size,
+                self.target_dtype,  # type: ignore[operator]
             )
             return F.linear(qinput, self.qweight, self.bias)
 
