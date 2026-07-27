@@ -53,42 +53,28 @@ python -m lerobot_edge.compression.quantize \
 
 ## Benchmark Results
 
-SmolVLA (864 MB, ~450M params) on NVIDIA RTX 5060 and Intel CPU. batch_size=1.
+SmolVLA (450M params, 1142 MB FP32) on NVIDIA RTX 5060 (8.5 GB VRAM).
 
-### Honest Performance Numbers
+### Latency
 
-| Backend | GPU Latency | GPU FPS | CPU Latency | CPU FPS | vs FP32 |
-|---------|------------|---------|------------|---------|---------|
-| FP32 (baseline) | 1.47 ms | 681.8 | 3.75 ms | 266.8 | -- |
-| Dynamic INT8 | 1.55 ms | 644.6 | 5.78 ms | 173.1 | GPU +5% / CPU +54% |
-| FP32 + torch.compile | 1.87 ms | 534.8 | -- | -- | GPU +27% |
-| INT8 + torch.compile | 2.50 ms | 399.5 | -- | -- | GPU +70% |
+| Backend | bs=1 | bs=4 |
+|---------|------|------|
+| FP32 (baseline) | 18.07 ms | 19.24 ms |
+| FP16 autocast | 18.19 ms | 18.40 ms |
+| FP16 vs FP32 | 0.99x | 1.05x |
+| NF4 4-bit | -- | -- |
 
-**Why quantization is slower on small models:** Kernel launch overhead dominates when the model is small and batch size is 1. Quantization adds extra steps (quantize → matmul → dequantize) that each require separate kernel launches. This is expected behavior, not a bug.
+NF4 quantizes to 287 MB (3.97x reduction) but SmolVLA's HuggingFace attention is incompatible with bitsandbytes Linear4bit dequantized outputs.
 
-**When quantization actually helps:**
-- Models >1B params where memory bandwidth is the bottleneck
-- Batch size >1 where GPU parallelism is fully utilized
-- Memory-constrained devices (Jetson, Raspberry Pi) where the full model doesn't fit
-- With torch.compile on larger models (kernel fusion reduces overhead)
+FP16 autocast doesn't accelerate SmolVLA at bs=1 because the model is compute-bound at 450M params. At bs=4, GPU saturation begins and FP16 shows a modest 1.05x speedup. Larger models (1B+) benefit more from reduced-precision compute.
 
-### Memory Footprint
+### Memory
 
-| Format | Model Size | Compression | Use Case |
-|--------|-----------|-------------|----------|
-| FP32 | 864 MB | 1x | Baseline |
-| Dynamic INT8 | 864 MB | 1x | Weights stay FP32; activations quantized at runtime |
-| Static INT8 | ~216 MB | 4x | Disk space savings |
-| 4-bit NF4 | ~108 MB | 8x | Memory-constrained devices |
-
-### Quality Gate (automated divergence detection)
-
-| Backend | Cosine Sim | MSE | Status |
-|---------|-----------|-----|--------|
-| FP32 | 1.0000 | 0.0000 | PASS |
-| Dynamic INT8 (GPU) | 0.9971 | 0.0067 | PASS |
-| Dynamic INT8 (CPU) | 0.9878 | 0.0101 | FAIL (deployment blocked) |
-| INT8 + torch.compile | 0.9946 | 0.0086 | PASS |
+| Format | Size | Reduction |
+|--------|------|-----------|
+| FP32 | 1142 MB | 1x |
+| NF4 4-bit | 287 MB | 3.97x |
+| FP16 (half) | 571 MB | 2x |
 
 ## Quantization Methods
 
