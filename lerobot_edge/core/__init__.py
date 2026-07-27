@@ -1,4 +1,6 @@
-"""Core abstractions: backends, configs, router, utilities."""
+"""Core abstractions for lerobot_edge: backends, configs, and utilities."""
+
+from __future__ import annotations
 
 from lerobot_edge.core.base import (
     CompressedPolicy,
@@ -22,7 +24,6 @@ from lerobot_edge.core.utils import (
     load_policy_from_checkpoint,
     measure_model_memory,
     measure_peak_memory_mb,
-    sigmoid_scalar,
 )
 
 __all__ = [
@@ -43,5 +44,4 @@ __all__ = [
     "load_policy_from_checkpoint",
     "measure_model_memory",
     "measure_peak_memory_mb",
-    "sigmoid_scalar",
 ]

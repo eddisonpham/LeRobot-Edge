@@ -38,7 +38,6 @@ from lerobot_edge.core.utils import (
     get_git_commit_hash,
     measure_model_memory,
     measure_peak_memory_mb,
-    sigmoid_scalar,
 )
 from lerobot_edge.evaluation.gate import QualityGate, QualityGateResult
 from lerobot_edge.evaluation.metrics import (
@@ -195,11 +194,6 @@ class TestCoreUtilsAPI:
     def test_measure_peak_memory_mb(self):
         mb = measure_peak_memory_mb()
         assert isinstance(mb, float)
-
-    def test_sigmoid_scalar(self):
-        assert abs(sigmoid_scalar(0.0) - 0.5) < 1e-6
-        assert sigmoid_scalar(100.0) > 0.99
-        assert sigmoid_scalar(-100.0) < 0.01
 
     def test_build_dummy_input(self, policy):
         dummy = build_dummy_input(policy, torch.device("cpu"))

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib
 import logging
-import math
 import subprocess
 
 import torch
@@ -16,7 +15,6 @@ __all__ = [
     "get_git_commit_hash",
     "measure_model_memory",
     "measure_peak_memory_mb",
-    "sigmoid_scalar",
     "build_dummy_input",
     "load_policy_from_checkpoint",
 ]
@@ -66,11 +64,6 @@ def measure_peak_memory_mb() -> float:
             return float(usage.ru_maxrss) / 1024
         except (ImportError, AttributeError):
             return 0.0
-
-
-def sigmoid_scalar(x: float) -> float:
-    """Compute sigmoid of a scalar without creating tensors."""
-    return 1.0 / (1.0 + math.exp(-x))
 
 
 def build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torch.Tensor]:

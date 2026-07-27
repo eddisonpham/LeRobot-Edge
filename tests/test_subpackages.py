@@ -39,20 +39,10 @@ class TestCoreSubpackage:
         from lerobot_edge.core.utils import (
             measure_model_memory,
             measure_peak_memory_mb,
-            sigmoid_scalar,
         )
 
         assert callable(measure_model_memory)
         assert callable(measure_peak_memory_mb)
-        assert callable(sigmoid_scalar)
-
-    def test_sigmoid_scalar_works(self):
-
-        from lerobot_edge.core.utils import sigmoid_scalar
-
-        assert sigmoid_scalar(0.0) == 0.5
-        assert sigmoid_scalar(100.0) == pytest.approx(1.0, abs=1e-10)
-        assert sigmoid_scalar(-100.0) == pytest.approx(0.0, abs=1e-10)
 
     def test_measure_model_memory_works(self):
         import torch.nn as nn

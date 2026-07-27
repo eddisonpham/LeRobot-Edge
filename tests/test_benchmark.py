@@ -221,7 +221,7 @@ class TestCompareResults:
         comparisons = compare_results(results, baseline_name="edge_identity")
         assert "edge_quant_int8" in comparisons
         assert comparisons["edge_quant_int8"]["speedup"] == 2.0
-        assert comparisons["edge_quant_int8"]["memory_savings"] == 50.0
+        assert comparisons["edge_quant_int8"]["memory_ratio"] == 0.5
 
     def test_compare_results_no_baseline(self):
         """compare_results should handle missing baseline gracefully."""
