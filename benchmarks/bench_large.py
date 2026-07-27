@@ -177,8 +177,6 @@ def run_benchmark(
     dim: int = 2048,
     config_name: str = "custom",
 ) -> dict:
-    import bitsandbytes as bnb  # noqa: F401
-
     dev = torch.device(device)
     logger.info("Building model: %s (layers=%d, dim=%d) on %s", config_name, layers, dim, device)
 
