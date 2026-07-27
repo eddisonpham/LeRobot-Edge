@@ -252,20 +252,23 @@ def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
     for name, module in linear_layers:
         parent_name, _, child_name = name.rpartition(".")
         parent = model if not parent_name else modules_dict[parent_name]
+        w4, state = bnb_func.quantize_4bit(module.weight.data.float(), quant_type=quant_type)
+        compute_dtype = (
+            torch.float16 if module.weight.device.type == "cuda" else module.weight.dtype
+        )
         new_layer = Linear4bit(
             module.in_features,
             module.out_features,
             bias=module.bias is not None,
-            compute_dtype=module.weight.dtype,
+            compute_dtype=compute_dtype,
             compress_statistics=True,
             quant_type=quant_type,
         )
-        w4, state = bnb_func.quantize_4bit(module.weight.data, quant_type=quant_type)
         new_layer.weight = Params4bit(
             w4, requires_grad=False, quant_type=quant_type, quant_state=state
         )
         if module.bias is not None:
-            new_layer.bias = nn.Parameter(module.bias, requires_grad=False)
+            new_layer.bias = nn.Parameter(module.bias.data.clone(), requires_grad=False)
         setattr(parent, child_name, new_layer)
 
     logger.info("4-bit quantization applied to %d Linear layers.", len(linear_layers))
