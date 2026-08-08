@@ -14,8 +14,11 @@ from lerobot_edge.core.configs import (  # noqa: F401, E402
     EdgeQuantInt8Config,
 )
 from lerobot_edge.optimization import (  # noqa: F401, E402
+    QuantizedKVCache,
     configure_sdpa_backend,
     get_attention_info,
+    get_kv_cache_stats,
+    optimize_kv_cache,
     optimize_model_attention,
     optimize_policy_for_inference,
 )
@@ -30,6 +33,9 @@ __all__ = [
     "get_attention_info",
     "optimize_model_attention",
     "optimize_policy_for_inference",
+    "QuantizedKVCache",
+    "optimize_kv_cache",
+    "get_kv_cache_stats",
 ]
 
 logger.info(

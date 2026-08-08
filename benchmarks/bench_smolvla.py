@@ -125,9 +125,11 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
     model_fp32, tokenizer_len = load_smolvla()
     model_fp32 = model_fp32.to(device).eval()
 
-    # Apply attention optimization (SDPA/FlashAttention)
+    # Apply attention optimization (SDPA/FlashAttention) + KV-cache quantization
     from lerobot_edge.optimization import optimize_policy_for_inference
-    model_fp32 = optimize_policy_for_inference(model_fp32, enable_attention=True)
+    model_fp32 = optimize_policy_for_inference(
+        model_fp32, enable_attention=True, enable_kv_cache_quant=True
+    )
     fp32_mem = measure_memory_mb(model_fp32)
 
     logger.info("Creating INT8 and INT4 quantized copies...")

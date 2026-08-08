@@ -48,6 +48,8 @@ class EdgeBaseConfig(PreTrainedConfig):
     benchmark_num_runs: int = 100
 
     optimize_attention: bool = True
+    optimize_kv_cache: bool = True
+    kv_cache_bits: int = 8
 
     @property
     def observation_delta_indices(self) -> list | None:

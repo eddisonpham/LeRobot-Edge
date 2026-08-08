@@ -80,12 +80,14 @@ class ExperimentResult:
     timestamp: str = field(default_factory=time.strftime)
     extra: dict[str, Any] = field(default_factory=dict)
     attention_opt: bool = False
+    kv_cache_opt: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "method": self.method,
             "compile_mode": self.compile_mode,
             "attention_opt": self.attention_opt,
+            "kv_cache_opt": self.kv_cache_opt,
             "batch_size": self.batch_size,
             "device": self.device,
             "latency_mean_ms": round(self.latency_mean_ms, 3),
@@ -162,7 +164,9 @@ class ExperimentRunner:
             # Apply attention optimization (SDPA/FlashAttention)
             from lerobot_edge.optimization import optimize_policy_for_inference
 
-            self._policy = optimize_policy_for_inference(self._policy, enable_attention=True)
+            self._policy = optimize_policy_for_inference(
+                self._policy, enable_attention=True, enable_kv_cache_quant=True
+            )
         return self._policy
 
     @property
@@ -316,6 +320,7 @@ class ExperimentRunner:
         batch_sizes: list[int] | None = None,
         cuda_graph: bool = False,
         attention_opt: bool = True,
+        kv_cache_opt: bool = True,
     ) -> list[ExperimentResult]:
         """Run a full experiment grid.
 
@@ -400,6 +405,7 @@ class ExperimentRunner:
                             warmup_runs=self.warmup_runs,
                             benchmark_runs=self.benchmark_runs,
                             attention_opt=attention_opt,
+                            kv_cache_opt=kv_cache_opt,
                             extra={
                                 "checkpoint": self.checkpoint,
                                 "policy_type": self.policy_type,
