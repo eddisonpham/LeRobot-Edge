@@ -35,7 +35,7 @@ class ConfidenceRouter:
         self._escalations = 0
 
     def predict(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict[str, Any]]:
-        """Run inference with confidence-based routing."""
+        """Run inference, routing to cloud if confidence < threshold."""
         self._total_inferences += 1
 
         edge_actions = self._edge.predict(batch)
@@ -82,7 +82,6 @@ class ConfidenceRouter:
 
     @property
     def stats(self) -> dict[str, Any]:
-        """Return routing statistics."""
         return {
             "total_inferences": self._total_inferences,
             "escalations": self._escalations,
@@ -91,7 +90,6 @@ class ConfidenceRouter:
         }
 
     def reset(self) -> None:
-        """Reset routing statistics."""
         self._total_inferences = 0
         self._escalations = 0
         self._edge.reset()

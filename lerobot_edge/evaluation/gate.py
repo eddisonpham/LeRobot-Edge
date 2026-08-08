@@ -26,11 +26,7 @@ class QualityGateResult:
 
 
 class QualityGate:
-    """Fails when quantized model output diverges beyond acceptable thresholds.
-
-    Mirrors the D-Robotics 0.999 cosine similarity pattern:
-    quantization that drops below the gate threshold is rejected.
-    """
+    """Rejects quantized models whose outputs diverge past thresholds."""
 
     def __init__(
         self,

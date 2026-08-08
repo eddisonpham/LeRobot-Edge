@@ -1,4 +1,4 @@
-"""Configuration dataclasses for lerobot_edge policy variants."""
+"""Configuration dataclasses for edge policy variants."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ __all__ = [
 
 @dataclass
 class EdgeBaseConfig(PreTrainedConfig):
-    """Base configuration for all lerobot_edge variants."""
+    """Base config for all edge variants."""
 
     source_pretrained_path: str | None = None
     source_policy_type: str = "smolvla"
@@ -76,7 +76,7 @@ class EdgeBaseConfig(PreTrainedConfig):
 @PreTrainedConfig.register_subclass("edge_identity")
 @dataclass
 class EdgeIdentityConfig(EdgeBaseConfig):
-    """Passthrough wrapper — no compression."""
+    """Passthrough — no compression."""
 
     type: str = "edge_identity"
 
@@ -84,7 +84,7 @@ class EdgeIdentityConfig(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_quant_int8")
 @dataclass
 class EdgeQuantInt8Config(EdgeBaseConfig):
-    """Dynamic INT8 quantized variant."""
+    """Dynamic INT8 quantized."""
 
     type: str = "edge_quant_int8"
     quantize_dynamic: bool = True
@@ -94,7 +94,7 @@ class EdgeQuantInt8Config(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_quant_bnb_int8")
 @dataclass
 class EdgeQuantBnbInt8Config(EdgeBaseConfig):
-    """bitsandbytes INT8 quantized variant (Linear8bitLt)."""
+    """bitsandbytes INT8 quantized."""
 
     type: str = "edge_quant_bnb_int8"
     quantize_dynamic: bool = False
@@ -104,7 +104,7 @@ class EdgeQuantBnbInt8Config(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_quant_int4")
 @dataclass
 class EdgeQuantInt4Config(EdgeBaseConfig):
-    """torchao INT4 weight-only quantized variant (recommended over bnb NF4)."""
+    """torchao INT4 weight-only (recommended)."""
 
     type: str = "edge_quant_int4"
     quantize_dynamic: bool = False
@@ -115,7 +115,7 @@ class EdgeQuantInt4Config(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_quant_bnb_nf4")
 @dataclass
 class EdgeQuantBnbNf4Config(EdgeBaseConfig):
-    """bitsandbytes NF4 4-bit quantized variant (legacy)."""
+    """bitsandbytes NF4 quantized (legacy)."""
 
     type: str = "edge_quant_bnb_nf4"
     quantize_dynamic: bool = False
@@ -125,7 +125,7 @@ class EdgeQuantBnbNf4Config(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_quant_bnb_fp4")
 @dataclass
 class EdgeQuantBnbFp4Config(EdgeBaseConfig):
-    """bitsandbytes FP4 4-bit quantized variant."""
+    """bitsandbytes FP4 quantized."""
 
     type: str = "edge_quant_bnb_fp4"
     quantize_dynamic: bool = False
@@ -135,7 +135,7 @@ class EdgeQuantBnbFp4Config(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_onnx_fp32")
 @dataclass
 class EdgeOnnxFp32Config(EdgeBaseConfig):
-    """ONNX Runtime inference with FP32 weights."""
+    """ONNX Runtime FP32."""
 
     type: str = "edge_onnx_fp32"
     onnx_opset: int = 17
@@ -144,7 +144,7 @@ class EdgeOnnxFp32Config(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_onnx_int8")
 @dataclass
 class EdgeOnnxInt8Config(EdgeBaseConfig):
-    """ONNX Runtime inference with INT8 quantized weights."""
+    """ONNX Runtime INT8."""
 
     type: str = "edge_onnx_int8"
     onnx_opset: int = 17
@@ -154,7 +154,7 @@ class EdgeOnnxInt8Config(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_distilled")
 @dataclass
 class EdgeDistilledConfig(EdgeBaseConfig):
-    """Teacher → student distilled variant."""
+    """Teacher-to-student distilled."""
 
     type: str = "edge_distilled"
     distill_epochs: int = 10
@@ -165,7 +165,7 @@ class EdgeDistilledConfig(EdgeBaseConfig):
 @PreTrainedConfig.register_subclass("edge_distilled_onnx_int8")
 @dataclass
 class EdgeDistilledOnnxInt8Config(EdgeBaseConfig):
-    """Distilled + ONNX + INT8 (combined pipeline)."""
+    """Distilled + ONNX + INT8."""
 
     type: str = "edge_distilled_onnx_int8"
     distill_epochs: int = 10

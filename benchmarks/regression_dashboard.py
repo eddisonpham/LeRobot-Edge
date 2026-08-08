@@ -1,18 +1,4 @@
-"""Performance regression dashboard for LeRobot Edge benchmarks.
-
-Scans benchmark JSON files, normalizes results, compares latest runs,
-and flags regressions > 5% in latency, throughput, or memory.
-
-Usage:
-    python -m benchmarks.regression_dashboard
-    python -m benchmarks.regression_dashboard --threshold 0.03
-    python -m benchmarks.regression_dashboard --dirs benchmark_results experiment_results
-    python -m benchmarks.regression_dashboard --output report.json
-
-Output:
-    - Terminal dashboard with color-coded regressions
-    - JSON regression report file
-"""
+"""Compare benchmark JSONs across runs and flag regressions > 5%."""
 
 from __future__ import annotations
 
@@ -22,17 +8,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Data models
-# ---------------------------------------------------------------------------
+# -- Data models --
 
 
 @dataclass
@@ -75,9 +57,7 @@ class DashboardReport:
     summary: dict[str, int]
 
 
-# ---------------------------------------------------------------------------
-# Normalization: convert diverse JSON formats to NormalizedResult
-# ---------------------------------------------------------------------------
+# -- Normalization --
 
 
 def _extract_compile_mode(method: str) -> tuple[str, str | None]:
@@ -91,13 +71,7 @@ def _extract_compile_mode(method: str) -> tuple[str, str | None]:
 def normalize_results(
     filepath: Path,
 ) -> list[NormalizedResult]:
-    """Load a JSON file and normalize to list of NormalizedResult.
-
-    Handles three formats:
-      1. List format (compile_int4, ExperimentRunner output)
-      2. Dict format A (bench_large.py output: nested by backend+bs)
-      3. Dict format B (compare_backends.py output: flat by backend)
-    """
+    """Load and normalize a benchmark JSON file."""
     with open(filepath) as f:
         data = json.load(f)
 
@@ -145,7 +119,6 @@ def _normalize_dict_format(
     """Normalize dict formats (bench_large.py and compare_backends.py)."""
     out = []
     model = data.get("config") or data.get("model", fname)
-    device = data.get("device", "unknown")
 
     # Format A: bench_large.py — has model_params, fp32, fp16, etc.
     if "model_params" in data or "fp32_memory_mb" in data:
@@ -202,9 +175,7 @@ def _normalize_dict_format(
     return out
 
 
-# ---------------------------------------------------------------------------
-# Diff engine
-# ---------------------------------------------------------------------------
+# -- Diff engine --
 
 
 def _make_key(r: NormalizedResult) -> tuple:
@@ -221,15 +192,7 @@ def compute_regressions(
     results: list[NormalizedResult],
     threshold_pct: float = 5.0,
 ) -> tuple[list[Regression], dict[str, int]]:
-    """Compare most-recent results against previous for each group.
-
-    Args:
-        results: All normalized results.
-        threshold_pct: Percentage threshold for flagging (default 5%).
-
-    Returns:
-        (regressions, summary_counts)
-    """
+    """Compare latest two runs per group. Returns (regressions, summary)."""
     # Group by key
     from collections import defaultdict
 
@@ -327,9 +290,7 @@ def _classify(
         return "regression" if pct < 0 else "improvement"
 
 
-# ---------------------------------------------------------------------------
-# Dashboard printer
-# ---------------------------------------------------------------------------
+# -- Printer --
 
 
 # ANSI color codes
@@ -357,7 +318,7 @@ def print_dashboard(
     files_scanned: int,
     results_compared: int,
 ) -> None:
-    """Print a formatted regression dashboard to stdout."""
+    """Print color-coded regression dashboard."""
     print(f"\n{BOLD}{'=' * 110}{RESET}")
     print(
         f"{BOLD}  PERFORMANCE REGRESSION DASHBOARD  "
@@ -431,9 +392,7 @@ def _color_str(s: str, severity: str) -> str:
     return s
 
 
-# ---------------------------------------------------------------------------
-# Main runner
-# ---------------------------------------------------------------------------
+# -- Runner --
 
 
 def run_dashboard(
@@ -441,16 +400,7 @@ def run_dashboard(
     threshold_pct: float = 5.0,
     output_path: str | Path | None = None,
 ) -> DashboardReport:
-    """Run the regression dashboard.
-
-    Args:
-        dirs: Directories to scan for benchmark JSONs.
-        threshold_pct: Regression threshold percentage.
-        output_path: Optional path to save JSON report.
-
-    Returns:
-        DashboardReport with all findings.
-    """
+    """Scan dirs, compute regressions, print dashboard, optionally save JSON."""
     if dirs is None:
         dirs = ["benchmark_results"]
 
@@ -525,9 +475,7 @@ def run_dashboard(
     return report
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+# -- CLI --
 
 
 def main() -> None:

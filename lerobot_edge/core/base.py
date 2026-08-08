@@ -1,4 +1,4 @@
-"""CompressedPolicy wrapper and deployment backend interface."""
+"""CompressedPolicy wrapper and deployment backends."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ class DeploymentBackend(abc.ABC):
 
 
 class NativePyTorchBackend(DeploymentBackend):
-    """Wraps an existing PyTorch policy module as a deployment backend."""
+    """Wraps a PyTorch policy as a backend."""
 
     def __init__(self, policy: nn.Module, device: torch.device | None = None) -> None:
         self._policy = policy
@@ -90,12 +90,7 @@ class _PredictWrapper(nn.Module):
 
 
 class CompiledBackend(DeploymentBackend):
-    """Wraps a backend with ``torch.compile`` for kernel fusion.
-
-    Default mode is ``reduce-overhead`` (uses CUDA graphs internally)
-    which is optimal for inference latency. Use ``max-autotune`` for
-    absolute lowest latency at the cost of long first-run compilation.
-    """
+    """Wraps a backend with torch.compile for kernel fusion."""
 
     def __init__(
         self,
@@ -160,17 +155,7 @@ class CompiledBackend(DeploymentBackend):
 
 
 class CUDAGraphBackend(DeploymentBackend):
-    """Ultra-low-latency backend using manual CUDA graph capture.
-
-    Captures the entire ``predict`` path into a single CUDA graph for
-    sub-100μs kernel launch overhead. Requires static input shapes and
-    that the backend does not have data-dependent control flow.
-
-    Usage:
-        >>> backend = CUDAGraphBackend(identity_backend)
-        >>> backend.capture(dummy_batch)  # one-time capture
-        >>> action = backend.predict(dummy_batch)  # replay (fast)
-    """
+    """Ultra-low-latency backend via manual CUDA graph capture."""
 
     def __init__(
         self,
@@ -178,10 +163,7 @@ class CUDAGraphBackend(DeploymentBackend):
         pool_size: int = 1,
     ) -> None:
         if backend.device.type != "cuda":
-            raise ValueError(
-                f"CUDAGraphBackend requires a CUDA backend, "
-                f"got {backend.device.type}"
-            )
+            raise ValueError(f"CUDAGraphBackend requires a CUDA backend, got {backend.device.type}")
         self._backend = backend
         self._pool_size = pool_size
         self._graph: torch.cuda.CUDAGraph | None = None
@@ -190,12 +172,7 @@ class CUDAGraphBackend(DeploymentBackend):
         self._captured = False
 
     def capture(self, batch: dict[str, torch.Tensor]) -> None:
-        """Capture the CUDA graph with the given batch as template.
-
-        The batch tensor shapes are frozen at capture time. Subsequent
-        calls to ``predict()`` must use tensors with the same shapes.
-        Copy new data into the captured tensors with ``.copy_()``.
-        """
+        """Capture CUDA graph. Input shapes frozen at capture time."""
         if self._captured:
             return
 
@@ -264,7 +241,7 @@ class CUDAGraphBackend(DeploymentBackend):
 
 
 class CompressedPolicy(PreTrainedPolicy):
-    """Wraps a DeploymentBackend behind LeRobot's policy interface."""
+    """Wraps a DeploymentBackend behind the LeRobot policy interface."""
 
     config_class = EdgeBaseConfig
     name = "edge_compressed"
@@ -384,7 +361,7 @@ class CompressedPolicy(PreTrainedPolicy):
 
 
 class _PlaceholderBackend(DeploymentBackend):
-    """Minimal backend returning zeros — used for registration tests."""
+    """Zeros-returning backend for registration tests."""
 
     def __init__(self, device: str | torch.device = "cpu") -> None:
         self._device = torch.device(device)

@@ -1,4 +1,4 @@
-"""Benchmark harness for lerobot_edge policy variants."""
+"""Benchmark harness for edge policy variants."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def benchmark_backend(
     device_profile: str = "cpu",
     config: EdgeBaseConfig | None = None,
 ) -> BenchmarkResult:
-    """Benchmark a deployment backend."""
+    """Benchmark a single backend."""
     logger.info(
         "Benchmarking %s on %s: warmup=%d, runs=%d",
         backend_name,
@@ -140,7 +140,7 @@ def benchmark_policy_variants(
     output_dir: str | Path = "benchmark_results",
     **kwargs: Any,
 ) -> list[BenchmarkResult]:
-    """Benchmark multiple policy variants and save results."""
+    """Benchmark multiple variants and save."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -177,7 +177,7 @@ def compare_results(
     results: list[BenchmarkResult],
     baseline_name: str = "edge_identity",
 ) -> dict[str, Any]:
-    """Compare benchmark results against a baseline."""
+    """Compare results against a baseline."""
     baseline = None
     for r in results:
         if r.backend_name == baseline_name:
@@ -208,7 +208,7 @@ def compare_results(
 
 
 def main() -> None:
-    """CLI entry point for ``lerobot-edge-benchmark``."""
+    """CLI entry point."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Benchmark lerobot_edge policy variants")

@@ -163,7 +163,7 @@ def generate_report(
     results_dir: str | Path,
     output_dir: str | Path = "docs",
 ) -> dict[str, Any]:
-    """Generate a complete benchmark report."""
+    """Generate benchmark report."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 

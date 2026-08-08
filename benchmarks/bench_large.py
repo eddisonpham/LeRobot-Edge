@@ -1,14 +1,4 @@
-"""Benchmark quantization across batch sizes to show when it actually helps.
-
-The key insight: quantization reduces memory bandwidth, which only translates
-to speedup when the model is memory-bandwidth-bound (large batch, large model)
-or when torch.compile fuses the dequantization kernels.
-
-Usage:
-    python -m benchmarks.bench_large --device cuda --config 1b
-    python -m benchmarks.bench_large --device cpu --config 1b
-    python -m benchmarks.bench_large --device cuda --config 1b --compile
-"""
+"""Benchmark quantization on large synthetic models across batch sizes."""
 
 from __future__ import annotations
 
@@ -154,8 +144,8 @@ def quantize_bnb_int8(model: nn.Module, min_out_features: int = 16) -> nn.Module
 
 
 def quantize_nf4(model: nn.Module, device: torch.device | None = None) -> nn.Module:
-    from bitsandbytes.nn import Linear4bit, Params4bit
     import bitsandbytes as bnb
+    from bitsandbytes.nn import Linear4bit, Params4bit
 
     quantized = copy.deepcopy(model)
     if device is not None:
@@ -389,7 +379,7 @@ def print_results(results: dict) -> None:
     print(row)
 
     # Quantized rows
-    for key, label, mem_key in [
+    for key, label, _mem_key in [
         ("fp16", "FP16", "fp16_memory_mb"),
         ("int8", "INT8", "int8_memory_mb"),
         ("nf4", "NF4", "nf4_memory_mb"),
@@ -406,7 +396,7 @@ def print_results(results: dict) -> None:
 
     # Memory row
     mem_row = f"{'Memory':<22}"
-    for bs in batch_sizes:
+    for _ in batch_sizes:
         mem_row += f"  {'':>18}"
     print()
     print(f"  FP32 memory: {fp32_mem:.1f} MB")

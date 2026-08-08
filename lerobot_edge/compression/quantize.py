@@ -1,15 +1,4 @@
-"""Post-training quantization for LeRobot policies.
-
-Provides INT8 (dynamic/static), INT4 weight-only (torchao),
-and bitsandbytes INT8/NF4/FP4 quantization backends.
-
-Design principles:
-  - torchao int4_weight_only is the recommended 4-bit method (native compile
-    support, correct dtypes, better perf than bnb)
-  - bnb NF4/FP4 remain as legacy fallbacks with automatic dtype adapters
-    to bridge float16 Linear4bit outputs to float32 attention layers
-  - All quantize functions return nn.Module (in-place or copy)
-"""
+"""Post-training quantization backends for LeRobot policies."""
 
 from __future__ import annotations
 
@@ -38,15 +27,13 @@ __all__ = [
     "QuantizedBackend",
 ]
 
-# ---------------------------------------------------------------------------
-# Optional dependency detection
-# ---------------------------------------------------------------------------
+# -- Optional deps --
 try:
     from torchao.core.config import AOBaseConfig
     from torchao.dtypes import to_affine_quantized_intx_static
     from torchao.quantization import Int8DynamicActivationInt8WeightConfig
-    from torchao.quantization import quantize_ as torchao_quantize
     from torchao.quantization import int4_weight_only as torchao_int4_weight_only
+    from torchao.quantization import quantize_ as torchao_quantize
     from torchao.quantization.granularity import PerAxis, PerTensor
     from torchao.quantization.observer import AffineQuantizedMinMaxObserver
     from torchao.quantization.quant_api import _replace_with_custom_fn_if_matches_filter
@@ -65,9 +52,7 @@ except ImportError:
     HAS_BNB = False
 
 
-# ============================================================================
-# torchao INT4 weight-only (RECOMMENDED for 4-bit deployment)
-# ============================================================================
+# -- torchao INT4 weight-only (recommended) --
 
 
 def quantize_int4_weight_only(
@@ -77,27 +62,7 @@ def quantize_int4_weight_only(
     layout: str | None = None,
     use_hqq: bool = False,
 ) -> nn.Module:
-    """Apply torchao INT4 weight-only quantization.
-
-    This is the recommended 4-bit quantization method. It works natively
-    with ``torch.compile`` and produces correct float32 outputs (no
-    dtype mismatch with downstream attention layers).
-
-    Args:
-        model: Model to quantize (modified in place).
-        group_size: Quantization group size (default 32 for good
-            accuracy/perf trade-off; 128 for better accuracy, 64 for
-            better perf).
-        layout: Optional packed layout. ``\"tensor_core_tiled\"`` for
-            tensor-core-optimized layout on CUDA.
-        use_hqq: If True, use HQQ quantization instead of default.
-
-    Returns:
-        The quantized model (same object reference, modified in place).
-
-    Raises:
-        ImportError: If torchao is not installed.
-    """
+    """Apply torchao INT4 weight-only quantization (recommended over bnb NF4)."""
     if not HAS_TORCHAO:
         raise ImportError(
             "torchao is required for INT4 weight-only quantization. "
@@ -132,9 +97,7 @@ def quantize_int4_weight_only(
         return model
 
 
-# ============================================================================
-# torchao dynamic / static INT8 (unchanged)
-# ============================================================================
+# -- torchao dynamic/static INT8 --
 
 if HAS_TORCHAO:
 
@@ -339,19 +302,11 @@ def static_int8_quantize(
     )
 
 
-# ============================================================================
-# bitsandbytes quantize functions (legacy fallback)
-# ============================================================================
+# -- bitsandbytes (legacy) --
 
 
 def _wrap_with_dtype_adapter(model: nn.Module) -> nn.Module:
-    """Wrap a Linar4bit model with a dtype-converting adapter.
-
-    bitsandbytes Linear4bit.dequantize() returns float16, but HuggingFace
-    attention layers (and many VLA vision encoders) expect float32.
-    This adapter inserts a float16→float32 conversion after each
-    Linear4bit layer's forward pass.
-    """
+    """Patch Linear4bit forward to cast output to input dtype (fixes attention)."""
 
     from bitsandbytes.nn.modules import Linear4bit
 
@@ -372,19 +327,7 @@ def _wrap_with_dtype_adapter(model: nn.Module) -> nn.Module:
 
 
 def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
-    """Apply bitsandbytes 4-bit quantization (NF4 or FP4).
-
-    **Legacy**: Prefer ``quantize_int4_weight_only`` (torchao) for
-    production deployment. This function applies a dtype adapter to
-    bridge Linear4bit/float16 outputs to float32 attention layers.
-
-    Args:
-        model: Model to quantize (modified in place).
-        quant_type: Quantization format (``\"nf4\"`` or ``\"fp4\"``).
-
-    Returns:
-        The quantized model.
-    """
+    """Apply bitsandbytes 4-bit quantization (legacy; prefer torchao int4)."""
     if not HAS_BNB:
         raise ImportError(
             "bitsandbytes is required for 4-bit quantization. "
@@ -443,7 +386,7 @@ def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
 
 
 def quantize_bnb_int8(model: nn.Module) -> nn.Module:
-    """Apply bitsandbytes Linear8bitLt INT8 quantization (legacy)."""
+    """Apply bitsandbytes INT8 quantization (legacy)."""
     if not HAS_BNB:
         raise ImportError(
             "bitsandbytes is required for INT8 quantization. "
@@ -489,17 +432,15 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
 
 
 def quantize_bnb_fp4(model: nn.Module) -> nn.Module:
-    """Apply bitsandbytes FP4 4-bit quantization (legacy)."""
+    """Apply bitsandbytes FP4 quantization (legacy)."""
     return quantize_4bit(model, quant_type="fp4")
 
 
-# ============================================================================
-# QuantizedBackend
-# ============================================================================
+# -- QuantizedBackend --
 
 
 class QuantizedBackend(NativePyTorchBackend):
-    """Deployment backend wrapping a quantized model."""
+    """Backend for quantized models."""
 
     def __init__(
         self,
@@ -517,23 +458,7 @@ class QuantizedBackend(NativePyTorchBackend):
         config: EdgeBaseConfig,
         calibration_data: dict[str, torch.Tensor] | None = None,
     ) -> QuantizedBackend:
-        """Create a QuantizedBackend from a policy and config.
-
-        Dispatch table:
-        ====================== =====================================
-        Config type             Quantization method
-        ====================== =====================================
-        ``edge_quant_int4``      torchao int4_weight_only (preferred)
-        ``edge_quant_int8``      torchao dynamic INT8
-        ``edge_quant_bnb_int8``  bitsandbytes Linear8bitLt
-        ``edge_quant_bnb_nf4``   bitsandbytes NF4 + dtype adapter
-        ``edge_quant_bnb_fp4``   bitsandbytes FP4 + dtype adapter
-        ``quantize_bits == 4``   torchao int4_weight_only
-        ``quantize_static``       torchao static INT8 (needs calibration)
-        ``quantize_dynamic``     torchao dynamic INT8
-        else                     FP32 passthrough
-        ====================== =====================================
-        """
+        """Create a QuantizedBackend from a policy and config."""
         policy.eval()
 
         config_type: str = getattr(config, "type", "")
@@ -572,9 +497,7 @@ class QuantizedBackend(NativePyTorchBackend):
         return cls(quantized, quant_type, device)
 
 
-# ============================================================================
-# CLI
-# ============================================================================
+# -- CLI --
 
 
 def main() -> None:

@@ -1,8 +1,4 @@
-"""Experiment tracking and monitoring for lerobot_edge pipelines.
-
-Provides optional Weights & Biases integration for logging metrics,
-artifacts, and benchmark results.
-"""
+"""Experiment tracking (W&B with local JSON fallback)."""
 
 from __future__ import annotations
 
@@ -39,10 +35,7 @@ class TrackConfig:
 
 
 class ExperimentTracker:
-    """Lightweight wrapper around Weights & Biases for logging pipeline metrics.
-
-    Falls back to local JSON logging when wandb is not installed.
-    """
+    """W&B tracking with local JSON fallback."""
 
     def __init__(self, config: TrackConfig | None = None, enabled: bool | None = None) -> None:
         self._config = config or TrackConfig()
@@ -57,7 +50,7 @@ class ExperimentTracker:
             logger.info("Local logging mode (wandb not installed or disabled)")
 
     def init_run(self, run_name: str | None = None, **kwargs: Any) -> None:
-        """Initialize a W&B run or start local logging."""
+        """Start a run."""
         self._finished = False
         if self._enabled:
             self._run = wandb.init(
@@ -72,7 +65,7 @@ class ExperimentTracker:
             self._local_log.append({"event": "init", "name": run_name, "config": kwargs})
 
     def log_metrics(self, metrics: dict[str, Any], step: int | None = None) -> None:
-        """Log scalar metrics."""
+        """Log metrics."""
         if self._finished:
             logger.warning("log_metrics called after finish_run — data will be lost")
         if self._enabled and self._run is not None:
@@ -82,7 +75,7 @@ class ExperimentTracker:
             self._local_log.append(entry)
 
     def log_config(self, config: dict[str, Any]) -> None:
-        """Log run configuration."""
+        """Log config."""
         if self._finished:
             logger.warning("log_config called after finish_run — data will be lost")
         if self._enabled and self._run is not None:
@@ -97,7 +90,7 @@ class ExperimentTracker:
         local_path: str | Path,
         description: str = "",
     ) -> None:
-        """Log a file artifact (model checkpoint, results JSON, etc.)."""
+        """Log a file artifact."""
         if self._finished:
             logger.warning("log_artifact called after finish_run — data will be lost")
         if self._enabled and self._run is not None:
@@ -117,7 +110,7 @@ class ExperimentTracker:
             )
 
     def log_benchmark_result(self, result: dict[str, Any]) -> None:
-        """Log a benchmark result with standard metric names."""
+        """Log benchmark result."""
         metrics = {}
         for key in [
             "latency_mean_ms",
@@ -137,7 +130,7 @@ class ExperimentTracker:
         self.log_metrics(metrics)
 
     def log_quality_report(self, report: dict[str, Any]) -> None:
-        """Log a quantization quality report."""
+        """Log quality report."""
         metrics = {}
         for key in [
             "compression_ratio",
@@ -159,7 +152,7 @@ class ExperimentTracker:
         results: list[dict[str, Any]],
         columns: list[str] | None = None,
     ) -> None:
-        """Log a comparison table (wandb.Table when available)."""
+        """Log comparison table."""
         if self._finished:
             logger.warning("log_comparison_table called after finish_run — data will be lost")
         if not results:
@@ -185,7 +178,7 @@ class ExperimentTracker:
             self._local_log.append({"event": "table", "columns": columns, "data": results})
 
     def finish_run(self) -> None:
-        """Finalize the run."""
+        """Finish the run."""
         if self._enabled and self._run is not None:
             wandb.finish()
             self._run = None
@@ -211,5 +204,5 @@ class ExperimentTracker:
 
     @property
     def is_active(self) -> bool:
-        """Whether the tracker is currently logging to W&B."""
+        """Whether actively logging to W&B."""
         return self._enabled and self._run is not None

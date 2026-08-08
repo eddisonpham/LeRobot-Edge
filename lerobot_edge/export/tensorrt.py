@@ -45,7 +45,7 @@ def export_onnx_to_tensorrt(
     max_batch_size: int = 8,
     workspace_size: int = 1 << 30,
 ) -> Path:
-    """Convert an ONNX model to a TensorRT engine."""
+    """Convert ONNX model to TensorRT engine."""
     if not HAS_TENSORRT:
         raise ImportError("TensorRT is required. Install with: pip install lerobot-edge[tensorrt]")
 
@@ -90,7 +90,7 @@ def export_onnx_to_tensorrt(
 
 
 class TensorRTBackend(DeploymentBackend):
-    """Deployment backend using TensorRT for inference."""
+    """Backend using TensorRT."""
 
     def __init__(
         self,
@@ -196,7 +196,7 @@ class TensorRTBackend(DeploymentBackend):
 
 
 def get_tensorrt_info() -> dict[str, Any]:
-    """Get information about the TensorRT installation."""
+    """Get TensorRT installation info."""
     if not HAS_TENSORRT:
         return {"available": False, "error": "TensorRT not installed"}
 

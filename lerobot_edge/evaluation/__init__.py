@@ -7,6 +7,11 @@ from lerobot_edge.evaluation.benchmark import (
     compare_results,
     load_results,
 )
+from lerobot_edge.evaluation.experiment import (
+    ExperimentResult,
+    ExperimentRunner,
+    run_experiment_grid,
+)
 from lerobot_edge.evaluation.gate import QualityGate, QualityGateResult
 from lerobot_edge.evaluation.metrics import (
     OutputDivergence,
@@ -14,11 +19,6 @@ from lerobot_edge.evaluation.metrics import (
     bootstrap_confidence_interval,
     compare_backends,
     measure_output_divergence,
-)
-from lerobot_edge.evaluation.experiment import (
-    ExperimentResult,
-    ExperimentRunner,
-    run_experiment_grid,
 )
 from lerobot_edge.evaluation.report import (
     aggregate_results,

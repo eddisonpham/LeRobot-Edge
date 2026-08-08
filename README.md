@@ -1,127 +1,87 @@
 # LeRobot Edge
 
-> Quantization, export, and benchmarking pipeline for deploying [HuggingFace LeRobot](https://github.com/huggingface/lerobot) policies on edge devices.
+Quantization, export, and benchmarking for deploying [LeRobot](https://github.com/huggingface/lerobot) policies on edge GPUs. Zero source modifications — install and change your policy type.
 
-LeRobot Edge plugs into LeRobot's policy system with zero source modifications. It adds INT8/4-bit quantization, ONNX/TensorRT export, quality validation, and benchmarking — everything you need to compress and deploy VLA models on GPU and CPU hardware.
-
-
-
-## Installation
+## Install
 
 ```bash
-pip install lerobot-edge
-pip install "lerobot-edge[onnx]"       # ONNX export
-pip install "lerobot-edge[quantize]"   # bitsandbytes INT8/4-bit
-pip install "lerobot-edge[tensorrt]"   # TensorRT (GPU)
-pip install "lerobot-edge[wandb]"      # experiment tracking
-pip install "lerobot-edge[all]"        # everything
+pip install lerobot-edge                    # core (torchao INT8/INT4)
+pip install "lerobot-edge[quantize]"        # bitsandbytes NF4/FP4
+pip install "lerobot-edge[onnx]"            # ONNX export
+pip install "lerobot-edge[wandb]"           # experiment tracking
+pip install "lerobot-edge[all]"             # everything
 ```
 
 ## Quickstart
 
 ```bash
-# Evaluate a quantized policy on PushT
-lerobot-eval \
-  --policy.type=edge_quant_int8 \
-  --policy.pretrained_path=lerobot/smolvla_base \
-  --env.type=pusht --eval.n_episodes=10
+# Evaluate quantized policy
+lerobot-eval --policy.type=edge_quant_int4 --policy.pretrained_path=lerobot/smolvla_base
+
+# Quantize a checkpoint
+lerobot-edge-quantize --source lerobot/smolvla_base --output ./quantized --method int4
 
 # Benchmark all backends
-python -m lerobot_edge.evaluation.compare_backends \
-  --checkpoint lerobot/smolvla_base \
-  --backends identity int8 bnb_int8 nf4 bnb_fp4
+python -m benchmarks.bench_smolvla --batch-sizes 1,4
 
-# Quantize and save
-python -m lerobot_edge.compression.quantize \
-  --source lerobot/smolvla_base \
-  --output ./quantized \
-  --method dynamic_int8
+# Systematic A/B experiment grid
+lerobot-edge-experiment --checkpoint lerobot/smolvla_base --methods fp32 int4
+
+# Regression dashboard
+lerobot-edge-regression --dirs benchmark_results
 ```
 
-## Available Variants
+## Variants
 
-| Variant | Description | Install |
-|---------|-------------|---------|
+| Variant | Method | Library |
+|---------|--------|---------|
 | `edge_identity` | FP32 passthrough | core |
-| `edge_quant_int8` | Dynamic INT8 (torchao) | core |
-| `edge_quant_bnb_int8` | INT8 (bitsandbytes) | `[quantize]` |
-| `edge_quant_bnb_nf4` | NF4 4-bit (bitsandbytes) | `[quantize]` |
-| `edge_quant_bnb_fp4` | FP4 4-bit (bitsandbytes) | `[quantize]` |
-| `edge_onnx_fp32` | ONNX Runtime FP32 | `[onnx]` |
-| `edge_onnx_int8` | ONNX Runtime INT8 | `[onnx]` |
-| `edge_distilled` | Teacher-student distilled | core |
+| `edge_quant_int8` | Dynamic INT8 | torchao |
+| `edge_quant_int4` | INT4 weight-only (recommended) | torchao |
+| `edge_quant_bnb_int8` | Linear8bitLt INT8 | bitsandbytes |
+| `edge_quant_bnb_nf4` | NF4 4-bit | bitsandbytes |
+| `edge_quant_bnb_fp4` | FP4 4-bit | bitsandbytes |
+| `edge_onnx_fp32` | ONNX Runtime FP32 | onnx |
+| `edge_onnx_int8` | ONNX Runtime INT8 | onnx |
 
-## Benchmark Results
+## Optimizations
 
-SmolVLA (450M params, 1142 MB FP32) on NVIDIA RTX 5060 Laptop GPU (7 GB VRAM).
+Three optimizations are applied automatically at load time:
 
-### Latency (with SDPA/FlashAttention optimized)
-
-| Backend | bs=1 | bs=4 |
-|---------|------|------|
-| FP32 + SDPA | 8.77 ms | 10.93 ms |
-| FP16 + SDPA | 8.49 ms | 10.57 ms |
-| NF4 + SDPA (287 MB) | 8.92 ms | 10.51 ms |
-| **FP16 speedup** | **1.03x** | **1.03x** |
-
-**SDPA/FlashAttention delivers 2.06x speedup** over the original eager attention baseline (18.07 ms → 8.77 ms at bs=1).
-
-NF4 quantization achieves 3.97x memory reduction (1142 MB → 287 MB) with negligible latency impact thanks to the built-in dtype adapter.
-
-### Large Model Benchmarks (1B params synthetic)
-
-| Backend | bs=1 | bs=16 | Memory |
-|---------|------|-------|--------|
-| FP32 | 13.7 ms | 30.4 ms | 4098 MB |
-| FP16 | 7.9 ms (1.74x) | 7.6 ms (4.00x) | 2049 MB |
-
-FP16 shows significant speedups on larger models (1B+) where memory bandwidth is the bottleneck.
-
-### Memory
-
-| Format | Size | Reduction |
-|--------|------|-----------|
-| FP32 | 1142 MB | 1x |
-| NF4 4-bit | 287 MB | 3.97x |
-| FP16 (half) | 571 MB | 2x |
-| INT8 KV-cache | 3.98x less | Per-layer |
-
-## Quantization Methods
-
-| Method | Library | Bit Width | Best For |
-|--------|---------|-----------|----------|
-| Dynamic INT8 | torchao | 8-bit | GPU with CUDA |
-| Linear8bitLt | bitsandbytes | 8-bit | GPU with CUDA |
-| NF4 | bitsandbytes | 4-bit | Memory-constrained GPU |
-| FP4 | bitsandbytes | 4-bit | Memory-constrained GPU |
-| Static INT8 | torchao | 8-bit | Disk space (needs calibration) |
-
-## How It Works
-
-Config classes register with LeRobot's `draccus.ChoiceRegistry` via `@PreTrainedConfig.register_subclass("edge_*")`. This means zero changes to LeRobot source — install `lerobot-edge` and change the policy type in your CLI or config.
+1. **SDPA/FlashAttention** — replaces eager matmul attention (2.06× speedup on SmolVLA)
+2. **INT8 KV-cache** — compresses cached key/value states (3.98× reduction, lossless)
+3. **torchao INT4** — weight-only quantization (4× memory reduction)
 
 ```python
-from lerobot_edge.core.configs import EdgeQuantInt8Config
-from lerobot_edge.compression.quantize import QuantizedBackend
-from lerobot_edge.evaluation.gate import QualityGate
+from lerobot_edge.optimization import optimize_policy_for_inference
 
-# Quantize
-config = EdgeQuantInt8Config(device="cpu")
-backend = QuantizedBackend.from_policy(policy, config)
-
-# Quality gate
-gate = QualityGate(min_cosine_similarity=0.999)
-result = gate.check(original, quantized, dummy_input)
+policy = optimize_policy_for_inference(policy,
+    enable_attention=True,          # SDPA/FlashAttention
+    enable_kv_cache_quant=True,     # INT8 KV-cache
+    enable_compile=False,           # torch.compile (Linux + Triton)
+)
 ```
+
+## Benchmarks
+
+SmolVLA (450M params) on RTX 5060 Laptop (7 GB), batch=1:
+
+| Backend | Latency | Memory |
+|---------|---------|--------|
+| FP32 + SDPA | 8.77 ms | 1142 MB |
+| FP16 + SDPA | 8.49 ms | 571 MB |
+| NF4 + SDPA | 8.92 ms | 287 MB |
+
+SDPA delivers 2.06× over eager attention (18.07→8.77 ms). NF4 gives 3.97× memory reduction.
 
 ## Development
 
 ```bash
 make install-dev   # pip install -e ".[dev,all]"
-make test          # non-slow tests
+make test          # fast unit tests
 make lint          # ruff check
 make format        # ruff format
-make ci            # lint + test
+make typecheck     # mypy
 ```
 
 ## License

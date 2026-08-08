@@ -1,18 +1,4 @@
-"""Verify torchao int4 + torch.compile kernel fusion delivers real speedups.
-
-Systematic 2×3 matrix:
-  - Quantization: FP32 (baseline), INT4 (torchao weight-only)
-  - Compile mode: None, reduce-overhead, max-autotune
-
-Tests both on synthetic transformer models (configurable sizes) and
-optionally on real SmolVLA checkpoints.
-
-Usage:
-    python -m benchmarks.bench_compile_int4
-    python -m benchmarks.bench_compile_int4 --device cuda --config 1b
-    python -m benchmarks.bench_compile_int4 --real-smolvla
-    python -m benchmarks.bench_compile_int4 --batch-sizes 1,4,16
-"""
+"""Verify torchao int4 + torch.compile delivers real speedups."""
 
 from __future__ import annotations
 
@@ -23,7 +9,6 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import torch
@@ -35,9 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Model configs (synthetic)
-# ---------------------------------------------------------------------------
+# -- Model configs --
 
 MODEL_CONFIGS: dict[str, dict] = {
     "500m": {"layers": 12, "dim": 2048},
@@ -81,9 +64,7 @@ class TransformerModel(nn.Module):
         return
 
 
-# ---------------------------------------------------------------------------
-# Benchmark helpers
-# ---------------------------------------------------------------------------
+# -- Helpers --
 
 
 @dataclass
@@ -180,9 +161,7 @@ def bench_latency(
     )
 
 
-# ---------------------------------------------------------------------------
-# Main benchmark
-# ---------------------------------------------------------------------------
+# -- Main --
 
 
 def run_compile_int4_benchmark(
@@ -258,9 +237,8 @@ def run_compile_int4_benchmark(
 
     # --- Compile mode matrix ---
     compile_modes: list[str | None] = [None]
-    if is_cuda or force_compile:
-        if hasattr(torch, "compile"):
-            compile_modes.extend(["reduce-overhead", "max-autotune"])
+    if (is_cuda or force_compile) and hasattr(torch, "compile"):
+        compile_modes.extend(["reduce-overhead", "max-autotune"])
 
     # Use higher warmup/runs for GPU
     warmup = 30 if is_cuda else 10
@@ -309,19 +287,14 @@ def run_compile_int4_benchmark(
             for bs in batch_sizes:
                 dummy = {"observation.state": torch.randn(bs, 7, device=dev)}
 
-                def make_fn(m: nn.Module) -> Any:
-                    def fn(batch: dict) -> torch.Tensor:
-                        with torch.no_grad():
-                            return m(batch["observation.state"])
-
-                    return fn
-
-                fn = make_fn(model)
+                def _infer_fn(batch: dict, _m: nn.Module = model) -> torch.Tensor:
+                    with torch.no_grad():
+                        return _m(batch["observation.state"])
 
                 # Extra warmup for compiled models
                 extra_warmup = warmup + (10 if cmode else 0)
                 mean_ms, p50, p95, fps, peak_mem = bench_latency(
-                    fn, dummy, extra_warmup, num_runs, bs, is_cuda
+                    _infer_fn, dummy, extra_warmup, num_runs, bs, is_cuda
                 )
 
                 logger.info(
@@ -369,9 +342,7 @@ def run_compile_int4_benchmark(
     return results
 
 
-# ---------------------------------------------------------------------------
-# Reporting
-# ---------------------------------------------------------------------------
+# -- Reporting --
 
 
 def print_results_table(results: list[CompileInt4Result]) -> None:
@@ -384,7 +355,7 @@ def print_results_table(results: list[CompileInt4Result]) -> None:
     device = results[0].device.upper()
 
     print(f"\n{'=' * 95}")
-    print(f"  torch.compile + INT4 KERNEL FUSION BENCHMARK")
+    print("  torch.compile + INT4 KERNEL FUSION BENCHMARK")
     print(f"  Model: {config}  |  Device: {device}")
     print(f"{'=' * 95}")
 
@@ -473,9 +444,7 @@ def compute_speedups(results: list[CompileInt4Result]) -> dict:
     return speedups
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+# -- CLI --
 
 
 def main() -> None:

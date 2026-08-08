@@ -93,15 +93,7 @@ def measure_output_divergence(
     original_outputs: list[torch.Tensor],
     quantized_outputs: list[torch.Tensor],
 ) -> OutputDivergence:
-    """Compute divergence metrics between original and quantized model outputs.
-
-    Args:
-        original_outputs: List of output tensors from the original model.
-        quantized_outputs: List of output tensors from the quantized model.
-
-    Returns:
-        OutputDivergence with MSE, MAE, cosine similarity, and max error.
-    """
+    """Compute MSE, MAE, cosine similarity, and max error between output lists."""
     if len(original_outputs) != len(quantized_outputs):
         raise ValueError(
             f"Output lists must have same length: {len(original_outputs)} vs {len(quantized_outputs)}"
@@ -166,20 +158,7 @@ def compare_backends(
     dummy_input: dict[str, torch.Tensor],
     num_samples: int = 10,
 ) -> QuantizationQualityReport:
-    """Compare original vs quantized model outputs and performance.
-
-    Both models must implement ``select_action(batch) -> Tensor``
-    (the standard LeRobot policy interface).
-
-    Args:
-        original: The original FP32 model.
-        quantized: The quantized model.
-        dummy_input: Input batch for inference.
-        num_samples: Number of forward passes to compare.
-
-    Returns:
-        QuantizationQualityReport with divergence, latency, and memory metrics.
-    """
+    """Compare original vs quantized model outputs, latency, and memory."""
     from lerobot_edge.core.utils import measure_model_memory
 
     original.eval()
@@ -227,16 +206,7 @@ def bootstrap_confidence_interval(
     confidence: float = 0.95,
     n_bootstrap: int = 1000,
 ) -> tuple[float, float, float]:
-    """Compute bootstrap confidence interval for a metric.
-
-    Args:
-        data: List of metric values.
-        confidence: Confidence level (default 0.95).
-        n_bootstrap: Number of bootstrap resamples.
-
-    Returns:
-        Tuple of (mean, lower_bound, upper_bound).
-    """
+    """Compute bootstrap CI. Returns (mean, lower, upper)."""
     if not data:
         return (0.0, 0.0, 0.0)
 

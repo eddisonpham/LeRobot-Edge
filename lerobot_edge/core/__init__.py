@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from lerobot_edge.core.base import (
-    CUDAGraphBackend,
     CompiledBackend,
     CompressedPolicy,
+    CUDAGraphBackend,
     DeploymentBackend,
     IdentityBackend,
     NativePyTorchBackend,
@@ -17,11 +17,11 @@ from lerobot_edge.core.configs import (
     EdgeIdentityConfig,
     EdgeOnnxFp32Config,
     EdgeOnnxInt8Config,
-    EdgeQuantInt4Config,
-    EdgeQuantInt8Config,
+    EdgeQuantBnbFp4Config,
     EdgeQuantBnbInt8Config,
     EdgeQuantBnbNf4Config,
-    EdgeQuantBnbFp4Config,
+    EdgeQuantInt4Config,
+    EdgeQuantInt8Config,
 )
 from lerobot_edge.core.router import ConfidenceRouter
 from lerobot_edge.core.utils import (

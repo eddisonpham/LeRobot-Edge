@@ -32,6 +32,8 @@ nul
 
 # Project-specific
 benchmark_results/
+experiment_results/
+quantized/
 *.onnx
 *.trt
 *.engine

@@ -45,7 +45,7 @@ def export_policy_to_onnx(
     input_names: list[str] | None = None,
     output_names: list[str] | None = None,
 ) -> Path:
-    """Export a LeRobot policy to ONNX format."""
+    """Export a policy to ONNX."""
     if not HAS_ONNX:
         raise ImportError("onnx package is required. Install with: pip install lerobot-edge[onnx]")
 
@@ -97,7 +97,7 @@ def _build_dummy_inputs(
     config: EdgeBaseConfig,
     device: torch.device,
 ) -> dict[str, torch.Tensor]:
-    """Build dummy inputs for ONNX export."""
+    """Build dummy inputs."""
     dummy_inputs = {}
 
     if config.input_features:
@@ -135,7 +135,7 @@ def _infer_dynamic_axes(
 
 
 class OnnxRuntimeBackend(DeploymentBackend):
-    """Deployment backend using ONNX Runtime for inference."""
+    """Backend using ONNX Runtime."""
 
     def __init__(
         self,
@@ -173,7 +173,7 @@ class OnnxRuntimeBackend(DeploymentBackend):
         )
 
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Run inference via ONNX Runtime."""
+        """Run inference."""
         ort_inputs = {}
         for name in self._input_names:
             if name in batch:

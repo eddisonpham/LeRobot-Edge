@@ -1,24 +1,4 @@
-"""Systematic experiment runner for A/B testing edge deployment configs.
-
-Design
-========
-``ExperimentRunner`` accepts a parameter grid (quantization methods ×
-compile modes × batch sizes) and exhaustively benchmarks every combination
-against a baseline. Results are saved as timestamped JSON for regression
-tracking.
-
-Usage::
-
-    from lerobot_edge.evaluation.experiment import ExperimentRunner
-
-    runner = ExperimentRunner(checkpoint=\"lerobot/smolvla_base\")
-    results = runner.run(
-        methods=[\"fp32\", \"int8\", \"int4\"],
-        compile_modes=[None, \"reduce-overhead\"],
-        batch_sizes=[1, 4],
-    )
-    runner.print_summary(results)
-"""
+"""Systematic A/B experiment runner for edge deployment optimization."""
 
 from __future__ import annotations
 
@@ -40,16 +20,9 @@ from lerobot_edge.core.base import (
     DeploymentBackend,
     IdentityBackend,
 )
-from lerobot_edge.core.configs import (
-    EdgeBaseConfig,
-    EdgeIdentityConfig,
-    EdgeQuantInt4Config,
-    EdgeQuantInt8Config,
-)
 from lerobot_edge.core.utils import (
     build_dummy_input,
     load_policy_from_checkpoint,
-    measure_cuda_memory_mb,
     measure_model_memory,
     measure_peak_memory_mb,
 )
@@ -106,24 +79,7 @@ class ExperimentResult:
 
 
 class ExperimentRunner:
-    """Systematic A/B testing runner for edge deployment optimization.
-
-    Parameters
-    ----------
-    checkpoint:
-        HuggingFace Hub ID or local path to the model checkpoint.
-    policy_type:
-        Policy architecture type (default ``\"smolvla\"``).
-    device:
-        Device for inference (``\"cuda\"`` or ``\"cpu\"``).
-        Auto-detected if ``None``.
-    output_dir:
-        Directory for saved results.
-    warmup_runs:
-        Warmup iterations before measurement.
-    benchmark_runs:
-        Measurement iterations.
-    """
+    """Runs a grid of (quantization × compile mode × batch size) and saves results."""
 
     def __init__(
         self,
@@ -149,9 +105,7 @@ class ExperimentRunner:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ------------------------------------------------------------------
-    # Policy loading (lazy + cached)
-    # ------------------------------------------------------------------
+    # -- Policy loading --
 
     @property
     def policy(self) -> nn.Module:
@@ -175,9 +129,7 @@ class ExperimentRunner:
             self._dummy_input = build_dummy_input(self.policy, self.device)
         return self._dummy_input
 
-    # ------------------------------------------------------------------
-    # Backend factory
-    # ------------------------------------------------------------------
+    # -- Backend factory --
 
     def _make_backend(
         self,
@@ -185,7 +137,7 @@ class ExperimentRunner:
         compile_mode: str | None = None,
         cuda_graph: bool = False,
     ) -> DeploymentBackend:
-        """Build a backend for a given method and compile mode."""
+        """Build a backend for the given method and compile mode."""
         policy = self.policy
 
         # --- Quantization ---
@@ -235,16 +187,14 @@ class ExperimentRunner:
         base._quantization_type = quant_type  # type: ignore[attr-defined]
         return base
 
-    # ------------------------------------------------------------------
-    # Single benchmark
-    # ------------------------------------------------------------------
+    # -- Single benchmark --
 
     def _bench(
         self,
         backend: DeploymentBackend,
         batch_size: int,
     ) -> dict[str, Any]:
-        """Run benchmark for a single backend + batch size."""
+        """Benchmark a single backend for a given batch size."""
         # Build sized batch
         if batch_size == 1:
             batch = {k: v.clone() for k, v in self.dummy_input.items()}
@@ -309,9 +259,7 @@ class ExperimentRunner:
             "num_parameters": n_params,
         }
 
-    # ------------------------------------------------------------------
-    # Grid runner
-    # ------------------------------------------------------------------
+    # -- Grid runner --
 
     def run(
         self,
@@ -322,24 +270,7 @@ class ExperimentRunner:
         attention_opt: bool = True,
         kv_cache_opt: bool = True,
     ) -> list[ExperimentResult]:
-        """Run a full experiment grid.
-
-        Parameters
-        ----------
-        methods:
-            Quantization methods. Default: [\"fp32\", \"int8\", \"int4\"].
-        compile_modes:
-            torch.compile modes. ``None`` = no compile.
-            Default: [None, \"reduce-overhead\"].
-        batch_sizes:
-            Batch sizes. Default: [1] for CPU, [1, 4] for GPU.
-        cuda_graph:
-            Whether to test CUDA graph capture.
-
-        Returns
-        -------
-        List of ``ExperimentResult`` rows.
-        """
+        """Run the full experiment grid. Returns list of ExperimentResult."""
         if methods is None:
             methods = ["fp32", "int8", "int4"]
             if self.device.type == "cuda":
@@ -423,9 +354,7 @@ class ExperimentRunner:
         self._save(results)
         return results
 
-    # ------------------------------------------------------------------
-    # Save / Load
-    # ------------------------------------------------------------------
+    # -- Save/Load --
 
     def _save(self, results: list[ExperimentResult]) -> Path:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -471,13 +400,11 @@ class ExperimentRunner:
             )
         return results
 
-    # ------------------------------------------------------------------
-    # Reporting
-    # ------------------------------------------------------------------
+    # -- Reporting --
 
     @staticmethod
     def print_summary(results: list[ExperimentResult]) -> None:
-        """Print a formatted comparison table."""
+        """Print comparison table grouped by batch size."""
         if not results:
             print("No results.")
             return
@@ -517,7 +444,7 @@ class ExperimentRunner:
         baseline_method: str = "fp32",
         baseline_compile: str | None = None,
     ) -> dict[str, Any]:
-        """Compute speedups relative to a baseline."""
+        """Compute speedups vs baseline method."""
         speedups: dict[str, Any] = {}
         for batch_size in sorted(set(r.batch_size for r in results)):
             baseline = None
@@ -557,9 +484,7 @@ class ExperimentRunner:
         return speedups
 
 
-# ============================================================================
-# Convenience function
-# ============================================================================
+# -- Convenience --
 
 
 def run_experiment_grid(
@@ -567,7 +492,7 @@ def run_experiment_grid(
     output_dir: str | Path = "experiment_results",
     **kwargs: Any,
 ) -> list[ExperimentResult]:
-    """Convenience: create runner and run with default grid."""
+    """Create runner and run default grid."""
     runner = ExperimentRunner(
         checkpoint=checkpoint,
         output_dir=output_dir,
@@ -576,9 +501,7 @@ def run_experiment_grid(
     return runner.run()
 
 
-# ============================================================================
-# CLI
-# ============================================================================
+# -- CLI --
 
 
 def main() -> None:

@@ -36,13 +36,7 @@ def get_git_commit_hash() -> str:
 
 
 def _param_byte_size(p: torch.nn.Parameter) -> int:
-    """Get true byte size of a parameter, handling tensor subclasses.
-
-    Quantized tensor subclasses (torchao AffineQuantizedTensor,
-    bitsandbytes Int8Params/Params4bit) report incorrect
-    ``element_size()``. We detect subclasses and compute actual
-    storage bytes from their internal representation.
-    """
+    """Get true byte size, handling quantized tensor subclasses."""
     cls_name = type(p).__name__
 
     # torchao AffineQuantizedTensor
@@ -76,15 +70,9 @@ def _param_byte_size(p: torch.nn.Parameter) -> int:
 
 
 def measure_model_memory(model: nn.Module) -> dict[str, float]:
-    """Measure the memory footprint of a model.
-
-    Handles quantized tensor subclasses (torchao, bitsandbytes)
-    by inspecting internal storage representations.
-    """
+    """Measure model memory, handling quantized tensor subclasses."""
     param_bytes = sum(_param_byte_size(p) for p in model.parameters())
-    buffer_bytes = sum(
-        b.nelement() * b.element_size() for b in model.buffers()
-    )
+    buffer_bytes = sum(b.nelement() * b.element_size() for b in model.buffers())
     total_bytes = param_bytes + buffer_bytes
     num_params = sum(p.nelement() for p in model.parameters())
 
@@ -100,12 +88,7 @@ def measure_model_memory(model: nn.Module) -> dict[str, float]:
 
 
 def measure_peak_memory_mb() -> float:
-    """Measure current peak GPU/CPU memory usage in MB.
-
-    On CUDA: uses ``torch.cuda.max_memory_allocated()`` (accurate, driver-level).
-    On CPU: uses ``resource.getrusage(RUSAGE_SELF)`` on Unix;
-    returns 0 on Windows.
-    """
+    """Peak memory in MB (CUDA driver-level, CPU best-effort)."""
     if torch.cuda.is_available():
         return torch.cuda.max_memory_allocated() / (1024 * 1024)
     else:
@@ -115,21 +98,16 @@ def measure_peak_memory_mb() -> float:
             usage = resource.getrusage(resource.RUSAGE_SELF)  # type: ignore[attr-defined]
             # macOS returns bytes, Linux returns KB
             rss_kb = float(usage.ru_maxrss)
-            if hasattr(resource, "RUSAGE_SELF"):
-                # Heuristic: if RSS > 10M in KB, likely bytes (macOS)
-                if rss_kb > 10_000_000:
-                    rss_kb /= 1024
+            # Heuristic: if RSS > 10M, likely bytes (macOS)
+            if hasattr(resource, "RUSAGE_SELF") and rss_kb > 10_000_000:
+                rss_kb /= 1024
             return rss_kb / 1024
         except (ImportError, AttributeError):
             return 0.0
 
 
 def measure_cuda_memory_mb() -> float:
-    """Measure current CUDA memory allocated (MB).
-
-    Returns 0.0 if CUDA is not available. This is more precise than
-    ``measure_peak_memory_mb()`` for current-usage scenarios.
-    """
+    """Current CUDA memory allocated in MB."""
     if torch.cuda.is_available():
         return torch.cuda.memory_allocated() / (1024 * 1024)
     return 0.0
@@ -174,11 +152,7 @@ def load_policy_from_checkpoint(
     policy_type: str = "smolvla",
     device: str = "cpu",
 ) -> nn.Module:
-    """Load a LeRobot policy from a checkpoint path or HuggingFace Hub ID.
-
-    Tries from_pretrained for known architectures first, then falls back
-    to the factory method for other policy types.
-    """
+    """Load a policy from checkpoint or HuggingFace Hub."""
     known_arch: dict[str, str] = {
         "smolvla": "lerobot.policies.smolvla.modeling_smolvla.SmolVLAPolicy",
     }

@@ -1,15 +1,4 @@
-"""Benchmark real SmolVLA checkpoint: FP32 vs FP16 vs INT8 vs INT4 vs NF4.
-
-Loads SmolVLA from HuggingFace, measures latency/throughput/memory
-for FP32, FP16 autocast, dynamic INT8 (torchao), INT4 weight-only
-(torchao, recommended), and NF4 4-bit (bitsandbytes), with accuracy
-gates comparing quantized outputs against FP32 baseline.
-
-Usage:
-    python -m benchmarks.bench_smolvla
-    python -m benchmarks.bench_smolvla --batch-sizes 1,4,16
-    python -m benchmarks.bench_smolvla --compile  # enable torch.compile
-"""
+"""Benchmark real SmolVLA: FP32 vs FP16 vs INT8 vs INT4 vs NF4."""
 
 from __future__ import annotations
 
@@ -30,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def load_smolvla() -> tuple[nn.Module, int]:
     from lerobot.configs.policies import FeatureType, PolicyFeature
-    from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy, SmolVLAConfig
+    from lerobot.policies.smolvla.modeling_smolvla import SmolVLAConfig, SmolVLAPolicy
 
     input_features = {
         "observation.state": PolicyFeature(shape=[2], type=FeatureType.STATE),
@@ -316,7 +305,7 @@ def print_results(results: dict) -> None:
         row = f"{label} spd:<10"
         for bs in bs_list:
             k = str(bs)
-            row += f"  {results[key][k]:>21.2f}x" 
+            row += f"  {results[key][k]:>21.2f}x"
         print(row)
     print(f"{'=' * 85}\n")
 

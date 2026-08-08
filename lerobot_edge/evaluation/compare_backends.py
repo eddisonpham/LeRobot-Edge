@@ -83,14 +83,7 @@ def compare_all_backends(
     backends: list[str] | None = None,
     compile_mode: str | None = None,
 ) -> dict[str, Any]:
-    """Benchmark selected backends against the original model.
-
-    Args:
-        backends: Which backends to benchmark. Default ["identity", "int8"].
-            Options: "identity", "int8", "onnx_fp32", "onnx_int8",
-            "identity_compile", "int8_compile".
-        compile_mode: torch.compile mode (e.g. "max-autotune"). None disables.
-    """
+    """Benchmark selected backends against the original model."""
     if backends is None:
         backends = list(DEFAULT_BACKENDS)
 
@@ -264,7 +257,7 @@ def _bench_backend(
 
 
 def print_comparison(results: dict[str, Any]) -> None:
-    """Print formatted benchmark comparison table."""
+    """Print formatted comparison table."""
     print("\n" + "=" * 80)
     print("BACKEND COMPARISON")
     print("=" * 80)
