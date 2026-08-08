@@ -1,4 +1,4 @@
-<img src="assets/lerobot-edge-banner.png" alt="LeRobot Edge" width="100%">
+<img src="assets/lerobot.png" alt="LeRobot Edge" width="100%">
 
 Quantization, export, and benchmarking for deploying [LeRobot](https://github.com/huggingface/lerobot) policies on edge GPUs. Zero source modifications.
 
