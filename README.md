@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/lerobot-edge-icon.png" alt="LeRobot Edge" width="128">
+</p>
+
 # LeRobot Edge
 
 Quantization, export, and benchmarking for deploying [LeRobot](https://github.com/huggingface/lerobot) policies on edge GPUs. Zero source modifications.
