@@ -43,11 +43,13 @@ def get_platform_info() -> dict[str, object]:
 
     has_cuda = torch.cuda.is_available()
     has_triton = False
+    triton_version = None
     if has_cuda and hasattr(torch, "compile"):
         try:
-            import triton  # noqa: F401
+            import triton
 
             has_triton = True
+            triton_version = triton.__version__
         except ImportError:
             pass
 
@@ -64,6 +66,7 @@ def get_platform_info() -> dict[str, object]:
         if has_cuda
         else None,
         "triton": has_triton,
+        "triton_version": triton_version,
         "torch_compile": has_compile,
         "compile_ready": compile_ready,
     }

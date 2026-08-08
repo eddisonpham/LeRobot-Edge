@@ -44,6 +44,9 @@ tensorrt = [
     "tensorrt>=10.0.0",
     "polygraphy>=0.49.0",
 ]
+compile = [
+    "triton>=2.1.0; sys_platform == 'linux'",
+]
 wandb = [
     "wandb>=0.15.0",
 ]
@@ -55,7 +58,7 @@ dev = [
     "mypy>=1.0",
 ]
 all = [
-    "lerobot-edge[onnx,quantize,wandb,dev]",
+    "lerobot-edge[onnx,quantize,compile,wandb,dev]",
 ]
 
 [project.scripts]

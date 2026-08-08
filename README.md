@@ -5,11 +5,14 @@ Quantization, export, and benchmarking for deploying [LeRobot](https://github.co
 ## Install
 
 ```bash
-pip install lerobot-edge                    # core
-pip install "lerobot-edge[quantize]"        # bitsandbytes NF4/FP4
-pip install "lerobot-edge[onnx]"            # ONNX export
+pip install lerobot-edge                    # core (SDPA + KV-cache + torchao INT8/INT4)
+pip install "lerobot-edge[quantize]"        # + bitsandbytes NF4/FP4
+pip install "lerobot-edge[compile]"         # + triton (Linux, for torch.compile)
+pip install "lerobot-edge[onnx]"            # + ONNX export
 pip install "lerobot-edge[all]"             # everything
 ```
+
+Same command works on both OSes — `[compile]` installs Triton on Linux, silently skipped on Windows.
 
 ## Platform support
 
@@ -76,7 +79,7 @@ from lerobot_edge.optimization import optimize_policy_for_inference
 policy = optimize_policy_for_inference(policy,
     enable_attention=True,          # SDPA/FlashAttention
     enable_kv_cache_quant=True,     # INT8 KV-cache
-    enable_compile=False,           # torch.compile (Linux only)
+    enable_compile=True,            # torch.compile (needs [compile] extra)
 )
 ```
 
