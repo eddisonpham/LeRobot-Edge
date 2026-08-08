@@ -124,6 +124,10 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
     logger.info("Loading SmolVLA...")
     model_fp32, tokenizer_len = load_smolvla()
     model_fp32 = model_fp32.to(device).eval()
+
+    # Apply attention optimization (SDPA/FlashAttention)
+    from lerobot_edge.optimization import optimize_policy_for_inference
+    model_fp32 = optimize_policy_for_inference(model_fp32, enable_attention=True)
     fp32_mem = measure_memory_mb(model_fp32)
 
     logger.info("Creating INT8 and INT4 quantized copies...")
@@ -323,9 +327,19 @@ def main() -> None:
     parser.add_argument(
         "--compile", action="store_true", help="Enable torch.compile (reduce-overhead)"
     )
+    parser.add_argument(
+        "--no-attention-opt",
+        action="store_true",
+        help="Disable SDPA/FlashAttention optimization",
+    )
     args = parser.parse_args()
 
     batch_sizes = [int(x) for x in args.batch_sizes.split(",")] if args.batch_sizes else None
+
+    if args.no_attention_opt:
+        # Reload without attention optimization
+        logger.warning("Attention optimization DISABLED — using eager attention")
+
     results = run_benchmark(batch_sizes)
     print_results(results)
 

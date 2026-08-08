@@ -47,6 +47,8 @@ class EdgeBaseConfig(PreTrainedConfig):
     benchmark_warmup: int = 10
     benchmark_num_runs: int = 100
 
+    optimize_attention: bool = True
+
     @property
     def observation_delta_indices(self) -> list | None:
         return None

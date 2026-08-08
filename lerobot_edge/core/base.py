@@ -305,6 +305,12 @@ class CompressedPolicy(PreTrainedPolicy):
             policy = load_policy_from_checkpoint(
                 source, config.source_policy_type or "smolvla", str(device)
             )
+
+            # Apply attention optimization (SDPA/FlashAttention)
+            if getattr(config, "optimize_attention", True):
+                from lerobot_edge.optimization import optimize_policy_for_inference
+
+                policy = optimize_policy_for_inference(policy, enable_attention=True)
         except Exception as e:
             logger.error("Failed to load policy from %s: %s", source, e)
             return _PlaceholderBackend(str(device))
