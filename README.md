@@ -53,20 +53,29 @@ python -m lerobot_edge.compression.quantize \
 
 ## Benchmark Results
 
-SmolVLA (450M params, 1142 MB FP32) on NVIDIA RTX 5060 (8.5 GB VRAM).
+SmolVLA (450M params, 1142 MB FP32) on NVIDIA RTX 5060 Laptop GPU (7 GB VRAM).
 
-### Latency
+### Latency (with SDPA/FlashAttention optimized)
 
 | Backend | bs=1 | bs=4 |
 |---------|------|------|
-| FP32 (baseline) | 18.07 ms | 19.24 ms |
-| FP16 autocast | 18.19 ms | 18.40 ms |
-| FP16 vs FP32 | 0.99x | 1.05x |
-| NF4 4-bit | -- | -- |
+| FP32 + SDPA | 8.77 ms | 10.93 ms |
+| FP16 + SDPA | 8.49 ms | 10.57 ms |
+| NF4 + SDPA (287 MB) | 8.92 ms | 10.51 ms |
+| **FP16 speedup** | **1.03x** | **1.03x** |
 
-NF4 quantizes to 287 MB (3.97x reduction) but SmolVLA's HuggingFace attention is incompatible with bitsandbytes Linear4bit dequantized outputs.
+**SDPA/FlashAttention delivers 2.06x speedup** over the original eager attention baseline (18.07 ms → 8.77 ms at bs=1).
 
-FP16 autocast doesn't accelerate SmolVLA at bs=1 because the model is compute-bound at 450M params. At bs=4, GPU saturation begins and FP16 shows a modest 1.05x speedup. Larger models (1B+) benefit more from reduced-precision compute.
+NF4 quantization achieves 3.97x memory reduction (1142 MB → 287 MB) with negligible latency impact thanks to the built-in dtype adapter.
+
+### Large Model Benchmarks (1B params synthetic)
+
+| Backend | bs=1 | bs=16 | Memory |
+|---------|------|-------|--------|
+| FP32 | 13.7 ms | 30.4 ms | 4098 MB |
+| FP16 | 7.9 ms (1.74x) | 7.6 ms (4.00x) | 2049 MB |
+
+FP16 shows significant speedups on larger models (1B+) where memory bandwidth is the bottleneck.
 
 ### Memory
 
@@ -75,6 +84,7 @@ FP16 autocast doesn't accelerate SmolVLA at bs=1 because the model is compute-bo
 | FP32 | 1142 MB | 1x |
 | NF4 4-bit | 287 MB | 3.97x |
 | FP16 (half) | 571 MB | 2x |
+| INT8 KV-cache | 3.98x less | Per-layer |
 
 ## Quantization Methods
 

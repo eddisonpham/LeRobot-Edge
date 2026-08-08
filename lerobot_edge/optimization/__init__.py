@@ -167,6 +167,13 @@ def sdpa_attention_forward(
     scale = head_dim ** -0.5
 
     # --- SDPA: fused attention ---
+    # Ensure consistent dtypes (SDPA is strict about Q/K/V dtype match)
+    target_dtype = query_states.dtype
+    key_states = key_states.to(target_dtype)
+    value_states = value_states.to(target_dtype)
+    if sdpa_mask.dtype != target_dtype and sdpa_mask.dtype != torch.bool:
+        sdpa_mask = sdpa_mask.to(target_dtype)
+
     att_output = F.scaled_dot_product_attention(
         query_states,
         key_states,
@@ -554,8 +561,8 @@ def optimize_kv_cache(
         elif isinstance(past_key_values, QuantizedKVCache):
             quantized_cache = past_key_values
 
+        # _orig_forward is already bound to model, don't pass self again
         return _orig_forward(
-            self,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,

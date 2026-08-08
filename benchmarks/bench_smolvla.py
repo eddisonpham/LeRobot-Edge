@@ -280,8 +280,11 @@ def print_results(results: dict) -> None:
     print(f"  FP32 memory: {results['fp32_memory_mb']:.1f} MB")
     for label, key in [("INT8", "int8_memory_mb"), ("INT4", "int4_memory_mb"), ("NF4", "nf4_memory_mb")]:
         mem = results.get(key)
-        if mem is not None:
-            print(f"  {label} memory: {mem:.1f} MB ({results['fp32_memory_mb'] / mem:.2f}x reduction)")
+        if mem is not None and mem > 0:
+            ratio = results['fp32_memory_mb'] / mem
+            print(f"  {label} memory: {mem:.1f} MB ({ratio:.2f}x reduction)")
+        elif mem is not None:
+            print(f"  {label} memory: 0.0 MB (unavailable)")
     print(f"  Accuracy gate: cosine={results['cosine_similarity']:.6f}  pass={results['accuracy_gate_pass']}")
     print()
 
