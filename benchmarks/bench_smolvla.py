@@ -46,8 +46,12 @@ def make_dummy_batch(batch_size: int, device: torch.device, tokenizer_len: int =
     return {
         "observation.state": torch.randn(batch_size, 2, device=device),
         "observation.image": torch.rand(batch_size, 3, 224, 224, device=device),
-        "observation.language.tokens": torch.randint(0, 1000, (batch_size, tokenizer_len), device=device),
-        "observation.language.attention_mask": torch.ones(batch_size, tokenizer_len, dtype=torch.bool, device=device),
+        "observation.language.tokens": torch.randint(
+            0, 1000, (batch_size, tokenizer_len), device=device
+        ),
+        "observation.language.attention_mask": torch.ones(
+            batch_size, tokenizer_len, dtype=torch.bool, device=device
+        ),
     }
 
 
@@ -63,7 +67,10 @@ def bench_latency(
     dummy = make_dummy_batch(batch_size, device, tokenizer_len)
 
     for _ in range(warmup):
-        with torch.no_grad(), torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_autocast):
+        with (
+            torch.no_grad(),
+            torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_autocast),
+        ):
             model.select_action(dummy)
 
     latencies = []
@@ -90,7 +97,9 @@ def bench_latency(
     }
 
 
-def cosine_similarity_actions(model: nn.Module, batch_size: int, device: torch.device, tokenizer_len: int = 48) -> float:
+def cosine_similarity_actions(
+    model: nn.Module, batch_size: int, device: torch.device, tokenizer_len: int = 48
+) -> float:
     dummy = make_dummy_batch(batch_size, device, tokenizer_len)
     model_a = copy.deepcopy(model)
     model_b = copy.deepcopy(model)
@@ -116,6 +125,7 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
 
     # Apply attention optimization (SDPA/FlashAttention) + KV-cache quantization
     from lerobot_edge.optimization import optimize_policy_for_inference
+
     model_fp32 = optimize_policy_for_inference(
         model_fp32, enable_attention=True, enable_kv_cache_quant=True
     )
@@ -136,7 +146,11 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
         model_int8 = copy.deepcopy(model_fp32).to(device).eval()
         model_int8 = dynamic_int8_quantize(model_int8)
         int8_mem = measure_memory_mb(model_int8)
-        logger.info("INT8 memory: %.1f MB (%.2fx reduction)", int8_mem, fp32_mem / int8_mem if int8_mem > 0 else 0)
+        logger.info(
+            "INT8 memory: %.1f MB (%.2fx reduction)",
+            int8_mem,
+            fp32_mem / int8_mem if int8_mem > 0 else 0,
+        )
     except Exception as e:
         logger.warning("INT8 quantization failed: %s. Skipping INT8.", e)
 
@@ -148,7 +162,11 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
         model_int4 = copy.deepcopy(model_fp32).to(device).eval()
         model_int4 = quantize_int4_weight_only(model_int4, group_size=32)
         int4_mem = measure_memory_mb(model_int4)
-        logger.info("INT4 memory: %.1f MB (%.2fx reduction)", int4_mem, fp32_mem / int4_mem if int4_mem > 0 else 0)
+        logger.info(
+            "INT4 memory: %.1f MB (%.2fx reduction)",
+            int4_mem,
+            fp32_mem / int4_mem if int4_mem > 0 else 0,
+        )
     except Exception as e:
         logger.warning("INT4 quantization failed: %s. Skipping INT4.", e)
 
@@ -160,7 +178,11 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
         model_nf4 = copy.deepcopy(model_fp32).to(device).eval()
         model_nf4 = quantize_4bit(model_nf4, quant_type="nf4")
         nf4_mem = measure_memory_mb(model_nf4)
-        logger.info("NF4 memory: %.1f MB (%.2fx reduction)", nf4_mem, fp32_mem / nf4_mem if nf4_mem > 0 else 0)
+        logger.info(
+            "NF4 memory: %.1f MB (%.2fx reduction)",
+            nf4_mem,
+            fp32_mem / nf4_mem if nf4_mem > 0 else 0,
+        )
     except Exception as e:
         logger.warning("NF4 quantization failed: %s. Skipping NF4.", e)
 
@@ -193,21 +215,31 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
     nf4_results = {}
     for bs in batch_sizes:
         logger.info("Benchmarking bs=%d...", bs)
-        fp32_results[str(bs)] = bench_latency(model_fp32, bs, device, tokenizer_len, use_autocast=False)
-        fp16_results[str(bs)] = bench_latency(model_fp32, bs, device, tokenizer_len, use_autocast=True)
+        fp32_results[str(bs)] = bench_latency(
+            model_fp32, bs, device, tokenizer_len, use_autocast=False
+        )
+        fp16_results[str(bs)] = bench_latency(
+            model_fp32, bs, device, tokenizer_len, use_autocast=True
+        )
         if model_int8 is not None:
             try:
-                int8_results[str(bs)] = bench_latency(model_int8, bs, device, tokenizer_len, use_autocast=False)
+                int8_results[str(bs)] = bench_latency(
+                    model_int8, bs, device, tokenizer_len, use_autocast=False
+                )
             except Exception as e:
                 logger.warning("INT8 benchmark failed at bs=%d: %s", bs, e)
         if model_int4 is not None:
             try:
-                int4_results[str(bs)] = bench_latency(model_int4, bs, device, tokenizer_len, use_autocast=False)
+                int4_results[str(bs)] = bench_latency(
+                    model_int4, bs, device, tokenizer_len, use_autocast=False
+                )
             except Exception as e:
                 logger.warning("INT4 benchmark failed at bs=%d: %s", bs, e)
         if model_nf4 is not None:
             try:
-                nf4_results[str(bs)] = bench_latency(model_nf4, bs, device, tokenizer_len, use_autocast=False)
+                nf4_results[str(bs)] = bench_latency(
+                    model_nf4, bs, device, tokenizer_len, use_autocast=False
+                )
             except Exception as e:
                 logger.warning("NF4 benchmark failed at bs=%d: %s", bs, e)
                 model_nf4 = None
@@ -232,9 +264,17 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
         fp16_ms = fp16_results[bs_key]["mean_ms"]
         speedups_fp16[bs_key] = round(fp32_ms / fp16_ms, 3) if fp16_ms > 0 else 0
         if bs_key in int8_results:
-            speedups_int8[bs_key] = round(fp32_ms / int8_results[bs_key]["mean_ms"], 3) if int8_results[bs_key]["mean_ms"] > 0 else 0
+            speedups_int8[bs_key] = (
+                round(fp32_ms / int8_results[bs_key]["mean_ms"], 3)
+                if int8_results[bs_key]["mean_ms"] > 0
+                else 0
+            )
         if bs_key in int4_results:
-            speedups_int4[bs_key] = round(fp32_ms / int4_results[bs_key]["mean_ms"], 3) if int4_results[bs_key]["mean_ms"] > 0 else 0
+            speedups_int4[bs_key] = (
+                round(fp32_ms / int4_results[bs_key]["mean_ms"], 3)
+                if int4_results[bs_key]["mean_ms"] > 0
+                else 0
+            )
         if bs_key in nf4_results:
             nf4_ms = nf4_results[bs_key]["mean_ms"]
             speedups_nf4[bs_key] = round(fp32_ms / nf4_ms, 3) if nf4_ms > 0 else 0
@@ -267,14 +307,20 @@ def print_results(results: dict) -> None:
     print(f"Params: {results['params'] / 1e6:.0f}M")
     print(f"{'=' * 85}")
     print(f"  FP32 memory: {results['fp32_memory_mb']:.1f} MB")
-    for label, key in [("INT8", "int8_memory_mb"), ("INT4", "int4_memory_mb"), ("NF4", "nf4_memory_mb")]:
+    for label, key in [
+        ("INT8", "int8_memory_mb"),
+        ("INT4", "int4_memory_mb"),
+        ("NF4", "nf4_memory_mb"),
+    ]:
         mem = results.get(key)
         if mem is not None and mem > 0:
-            ratio = results['fp32_memory_mb'] / mem
+            ratio = results["fp32_memory_mb"] / mem
             print(f"  {label} memory: {mem:.1f} MB ({ratio:.2f}x reduction)")
         elif mem is not None:
             print(f"  {label} memory: 0.0 MB (unavailable)")
-    print(f"  Accuracy gate: cosine={results['cosine_similarity']:.6f}  pass={results['accuracy_gate_pass']}")
+    print(
+        f"  Accuracy gate: cosine={results['cosine_similarity']:.6f}  pass={results['accuracy_gate_pass']}"
+    )
     print()
 
     header = f"{'Backend':<10}"
@@ -285,7 +331,13 @@ def print_results(results: dict) -> None:
 
     # Build rows dynamically
     rows: list[tuple[str, str]] = []
-    for key, label in [("fp32", "FP32"), ("fp16", "FP16"), ("int8", "INT8"), ("int4", "INT4"), ("nf4", "NF4")]:
+    for key, label in [
+        ("fp32", "FP32"),
+        ("fp16", "FP16"),
+        ("int8", "INT8"),
+        ("int4", "INT4"),
+        ("nf4", "NF4"),
+    ]:
         if key not in results:
             continue
         row = f"{label:<10}"
@@ -299,7 +351,12 @@ def print_results(results: dict) -> None:
         print(row)
 
     # Speedup rows
-    for label, key in [("FP16", "speedup_fp16"), ("INT8", "speedup_int8"), ("INT4", "speedup_int4"), ("NF4", "speedup_nf4")]:
+    for label, key in [
+        ("FP16", "speedup_fp16"),
+        ("INT8", "speedup_int8"),
+        ("INT4", "speedup_int4"),
+        ("NF4", "speedup_nf4"),
+    ]:
         if key not in results:
             continue
         row = f"{label} spd:<10"

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "get_git_commit_hash",
+    "get_platform_info",
     "measure_model_memory",
     "measure_peak_memory_mb",
     "measure_cuda_memory_mb",
@@ -33,6 +34,39 @@ def get_git_commit_hash() -> str:
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
         return "unknown"
+
+
+def get_platform_info() -> dict[str, object]:
+    """Return dict of platform capabilities for cross-platform awareness."""
+    import platform
+    import sys
+
+    has_cuda = torch.cuda.is_available()
+    has_triton = False
+    if has_cuda and hasattr(torch, "compile"):
+        try:
+            import triton  # noqa: F401
+
+            has_triton = True
+        except ImportError:
+            pass
+
+    has_compile = hasattr(torch, "compile")
+    compile_ready = has_compile and (has_triton or sys.platform == "linux")
+
+    return {
+        "os": platform.system(),
+        "python": platform.python_version(),
+        "pytorch": torch.__version__,
+        "cuda": has_cuda,
+        "gpu": torch.cuda.get_device_name(0) if has_cuda else None,
+        "vram_gb": round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1)
+        if has_cuda
+        else None,
+        "triton": has_triton,
+        "torch_compile": has_compile,
+        "compile_ready": compile_ready,
+    }
 
 
 def _param_byte_size(p: torch.nn.Parameter) -> int:

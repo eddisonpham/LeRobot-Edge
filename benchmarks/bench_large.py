@@ -161,9 +161,7 @@ def quantize_nf4(model: nn.Module, device: torch.device | None = None) -> nn.Mod
     for name, module in linear_layers:
         parent_name, _, child_name = name.rpartition(".")
         parent = modules_dict[parent_name] if parent_name else quantized
-        w4, state = bnb.functional.quantize_4bit(
-            module.weight.data.float(), quant_type="nf4"
-        )
+        w4, state = bnb.functional.quantize_4bit(module.weight.data.float(), quant_type="nf4")
         new_layer = Linear4bit(
             module.in_features,
             module.out_features,
@@ -171,13 +169,9 @@ def quantize_nf4(model: nn.Module, device: torch.device | None = None) -> nn.Mod
             compute_dtype=compute_dtype,
             quant_type="nf4",
         )
-        new_layer.weight = Params4bit(
-            w4, requires_grad=False, quant_type="nf4", quant_state=state
-        )
+        new_layer.weight = Params4bit(w4, requires_grad=False, quant_type="nf4", quant_state=state)
         if module.bias is not None:
-            new_layer.bias = nn.Parameter(
-                module.bias.data.clone(), requires_grad=False
-            )
+            new_layer.bias = nn.Parameter(module.bias.data.clone(), requires_grad=False)
         setattr(parent, child_name, new_layer)
 
     return quantized
@@ -212,7 +206,9 @@ def run_benchmark(
     fp32_mem = measure_memory_mb(model)
     logger.info(
         "Model: %d params (%.1fM), FP32 memory: %.1f MB",
-        num_params, num_params / 1e6, fp32_mem,
+        num_params,
+        num_params / 1e6,
+        fp32_mem,
     )
 
     warmup = 30 if device == "cuda" else 10
@@ -295,7 +291,9 @@ def run_benchmark(
                 r = bench_latency(int8_fn, dummy, warmup, num_runs, bs)
                 r.memory_mb = int8_mem
                 int8_results[bs] = r
-                logger.info("INT8  bs=%-3d: %.2f ms  (%6.0f samples/s)", bs, r.mean_ms, r.throughput)
+                logger.info(
+                    "INT8  bs=%-3d: %.2f ms  (%6.0f samples/s)", bs, r.mean_ms, r.throughput
+                )
             except Exception as e:
                 logger.warning("INT8 failed at bs=%d: %s", bs, e)
 
@@ -327,7 +325,9 @@ def run_benchmark(
                 r = bench_latency(nf4_fn, dummy, warmup, num_runs, bs)
                 r.memory_mb = nf4_mem
                 nf4_results[bs] = r
-                logger.info("NF4   bs=%-3d: %.2f ms  (%6.0f samples/s)", bs, r.mean_ms, r.throughput)
+                logger.info(
+                    "NF4   bs=%-3d: %.2f ms  (%6.0f samples/s)", bs, r.mean_ms, r.throughput
+                )
             except Exception as e:
                 logger.warning("NF4 failed at bs=%d: %s", bs, e)
 
@@ -360,7 +360,9 @@ def print_results(results: dict) -> None:
 
     print(f"\n{'=' * 90}")
     print(f"BENCHMARK — {device}{compiled}")
-    print(f"Config: {config} | Params: {params_m:.0f}M | Layers: {results['layers']} | Dim: {results['dim']}")
+    print(
+        f"Config: {config} | Params: {params_m:.0f}M | Layers: {results['layers']} | Dim: {results['dim']}"
+    )
     print(f"{'=' * 90}")
 
     header = f"{'Backend':<22}"
@@ -401,11 +403,17 @@ def print_results(results: dict) -> None:
     print()
     print(f"  FP32 memory: {fp32_mem:.1f} MB")
     if "fp16_memory_mb" in results:
-        print(f"  FP16 memory: {results['fp16_memory_mb']:.1f} MB ({results['fp16_memory_mb']/fp32_mem:.2f}x)")
+        print(
+            f"  FP16 memory: {results['fp16_memory_mb']:.1f} MB ({results['fp16_memory_mb'] / fp32_mem:.2f}x)"
+        )
     if "int8_memory_mb" in results:
-        print(f"  INT8 memory: {results['int8_memory_mb']:.1f} MB ({results['int8_memory_mb']/fp32_mem:.2f}x)")
+        print(
+            f"  INT8 memory: {results['int8_memory_mb']:.1f} MB ({results['int8_memory_mb'] / fp32_mem:.2f}x)"
+        )
     if "nf4_memory_mb" in results:
-        print(f"  NF4  memory: {results['nf4_memory_mb']:.1f} MB ({results['nf4_memory_mb']/fp32_mem:.2f}x)")
+        print(
+            f"  NF4  memory: {results['nf4_memory_mb']:.1f} MB ({results['nf4_memory_mb'] / fp32_mem:.2f}x)"
+        )
 
     print(f"\n{'=' * 90}")
     print("INTERPRETATION:")

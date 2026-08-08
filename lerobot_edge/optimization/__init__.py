@@ -26,6 +26,7 @@ __all__ = [
 
 try:
     import flash_attn  # noqa: F401
+
     HAS_FLASH_ATTN = True
 except ImportError:
     HAS_FLASH_ATTN = False
@@ -79,7 +80,9 @@ def sdpa_attention_forward(
     # GQA expansion
     key_states = key_states[:, :, :, None, :].expand(batch_size, seq_len, n_kv, groups, head_dim)
     key_states = key_states.reshape(batch_size, seq_len, n_heads, head_dim)
-    value_states = value_states[:, :, :, None, :].expand(batch_size, seq_len, n_kv, groups, head_dim)
+    value_states = value_states[:, :, :, None, :].expand(
+        batch_size, seq_len, n_kv, groups, head_dim
+    )
     value_states = value_states.reshape(batch_size, seq_len, n_heads, head_dim)
 
     query_states = query_states.transpose(1, 2)
@@ -100,9 +103,13 @@ def sdpa_attention_forward(
         sdpa_mask = sdpa_mask.to(target_dtype)
 
     att_output = F.scaled_dot_product_attention(
-        query_states, key_states, value_states,
-        attn_mask=sdpa_mask, dropout_p=0.0, is_causal=False,
-        scale=head_dim ** -0.5,
+        query_states,
+        key_states,
+        value_states,
+        attn_mask=sdpa_mask,
+        dropout_p=0.0,
+        is_causal=False,
+        scale=head_dim**-0.5,
     )
 
     att_output = att_output.transpose(1, 2).contiguous()
@@ -136,10 +143,14 @@ def get_attention_info() -> dict[str, Any]:
     if info["cuda_available"]:
         b = torch.backends.cuda
         info["flash_enabled"] = b.flash_sdp_enabled() if hasattr(b, "flash_sdp_enabled") else False
-        info["mem_efficient_enabled"] = b.mem_efficient_sdp_enabled() if hasattr(b, "mem_efficient_sdp_enabled") else False
+        info["mem_efficient_enabled"] = (
+            b.mem_efficient_sdp_enabled() if hasattr(b, "mem_efficient_sdp_enabled") else False
+        )
         info["math_enabled"] = b.math_sdp_enabled() if hasattr(b, "math_sdp_enabled") else True
         gpu = torch.cuda.get_device_name(0)
-        if info["flash_enabled"] and any(a in gpu for a in ["A100", "A10", "RTX 30", "RTX 40", "RTX 50", "H100"]):
+        if info["flash_enabled"] and any(
+            a in gpu for a in ["A100", "A10", "RTX 30", "RTX 40", "RTX 50", "H100"]
+        ):
             info["recommended_backend"] = "FlashAttention (SDPA)"
         elif info["mem_efficient_enabled"]:
             info["recommended_backend"] = "Memory-Efficient (SDPA)"
@@ -167,7 +178,11 @@ class QuantizedKVCache(dict):
         self.bits = bits
         self.per_channel = per_channel
         self.symmetric = symmetric
-        self._stats: dict[str, float] = {"bytes_before": 0.0, "bytes_after": 0.0, "layers_quantized": 0}
+        self._stats: dict[str, float] = {
+            "bytes_before": 0.0,
+            "bytes_after": 0.0,
+            "layers_quantized": 0,
+        }
 
     def __setitem__(self, key: Any, value: Any) -> None:
         if isinstance(value, dict) and "key_states" in value:
@@ -201,7 +216,9 @@ class QuantizedKVCache(dict):
             qn = f"{tn}_quantized"
             if qn in lc:
                 dt = getattr(torch, lc.get(f"{tn}_dtype", "float32"), torch.float32)
-                result[tn] = self._dequantize_tensor(lc[qn], lc[f"{tn}_scale"], lc.get(f"{tn}_zp"), dt)
+                result[tn] = self._dequantize_tensor(
+                    lc[qn], lc[f"{tn}_scale"], lc.get(f"{tn}_zp"), dt
+                )
             elif tn in lc:
                 result[tn] = lc[tn]
         return result
@@ -213,7 +230,9 @@ class QuantizedKVCache(dict):
             flat = t.float().reshape(-1, t.shape[-1])
             amax = flat.abs().amax(dim=0).clamp_min(1e-12)
             scale = amax / 127
-            q_data = (flat / scale[None, :]).round().clamp(-127, 127).to(torch.int8).reshape(t.shape)
+            q_data = (
+                (flat / scale[None, :]).round().clamp(-127, 127).to(torch.int8).reshape(t.shape)
+            )
             result = {"data": q_data, "scale": scale.reshape(-1)}
         else:
             amax = t.float().abs().max().clamp_min(1e-12)
@@ -227,14 +246,26 @@ class QuantizedKVCache(dict):
         return result
 
     @staticmethod
-    def _dequantize_tensor(q_data: torch.Tensor, scale: torch.Tensor | float,
-                           zp: torch.Tensor | int | None, target_dtype: torch.dtype) -> torch.Tensor:
-        if isinstance(scale, torch.Tensor) and scale.dim() == 1 and scale.shape[0] == q_data.shape[-1]:
+    def _dequantize_tensor(
+        q_data: torch.Tensor,
+        scale: torch.Tensor | float,
+        zp: torch.Tensor | int | None,
+        target_dtype: torch.dtype,
+    ) -> torch.Tensor:
+        if (
+            isinstance(scale, torch.Tensor)
+            and scale.dim() == 1
+            and scale.shape[0] == q_data.shape[-1]
+        ):
             s = scale.to(q_data.device).float()
             z = zp.to(q_data.device).float() if zp is not None else 0.0
             return ((q_data.float() - z) * s[None, None, None, :]).to(target_dtype)
         s = float(scale) if not isinstance(scale, torch.Tensor) else scale.item()
-        z = float(zp) if zp is not None and not isinstance(zp, torch.Tensor) else (zp.item() if isinstance(zp, torch.Tensor) else 0.0)
+        z = (
+            float(zp)
+            if zp is not None and not isinstance(zp, torch.Tensor)
+            else (zp.item() if isinstance(zp, torch.Tensor) else 0.0)
+        )
         return ((q_data.float() - z) * s).to(target_dtype)
 
     @property
@@ -246,12 +277,16 @@ class QuantizedKVCache(dict):
     @property
     def stats(self) -> dict[str, float]:
         cr = self.compression_ratio
-        return {**self._stats, "compression_ratio": cr,
-                "savings_pct": (1.0 - 1.0 / cr) * 100 if cr > 0 else 0.0}
+        return {
+            **self._stats,
+            "compression_ratio": cr,
+            "savings_pct": (1.0 - 1.0 / cr) * 100 if cr > 0 else 0.0,
+        }
 
 
-def optimize_kv_cache(model: torch.nn.Module, bits: int = 8,
-                      per_channel: bool = True, symmetric: bool = True) -> QuantizedKVCache:
+def optimize_kv_cache(
+    model: torch.nn.Module, bits: int = 8, per_channel: bool = True, symmetric: bool = True
+) -> QuantizedKVCache:
     """Monkey-patch model.forward to use QuantizedKVCache for KV-cache quantization."""
     if type(model).__name__ != "SmolVLMWithExpertModel":
         logger.warning("KV-cache quant unsupported for %s. Skipping.", type(model).__name__)
@@ -260,17 +295,29 @@ def optimize_kv_cache(model: torch.nn.Module, bits: int = 8,
     qcache: QuantizedKVCache | None = None
     _orig = model.forward
 
-    def _patched(self: Any, attention_mask=None, position_ids=None, past_key_values=None,
-                 inputs_embeds=None, use_cache=None, fill_kv_cache=None) -> Any:
+    def _patched(
+        self: Any,
+        attention_mask=None,
+        position_ids=None,
+        past_key_values=None,
+        inputs_embeds=None,
+        use_cache=None,
+        fill_kv_cache=None,
+    ) -> Any:
         nonlocal qcache
         if fill_kv_cache and past_key_values is None:
             qcache = QuantizedKVCache(bits=bits, per_channel=per_channel, symmetric=symmetric)
             past_key_values = qcache
         elif isinstance(past_key_values, QuantizedKVCache):
             qcache = past_key_values
-        return _orig(attention_mask=attention_mask, position_ids=position_ids,
-                     past_key_values=past_key_values, inputs_embeds=inputs_embeds,
-                     use_cache=use_cache, fill_kv_cache=fill_kv_cache)
+        return _orig(
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            fill_kv_cache=fill_kv_cache,
+        )
 
     model.forward = types.MethodType(_patched, model)  # type: ignore
     logger.info("Patched KV-cache → INT%d", bits)
@@ -286,8 +333,25 @@ def get_kv_cache_stats(cache: QuantizedKVCache) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 
+def _can_compile() -> bool:
+    """Check if torch.compile is available with Triton (Linux) or Inductor C++ (fallback)."""
+    if not hasattr(torch, "compile"):
+        return False
+    try:
+        import triton  # noqa: F401
+
+        return True
+    except ImportError:
+        pass
+    # On Linux, Inductor C++ backend may work without Triton
+    import sys
+
+    return sys.platform == "linux"
+
+
 def optimize_policy_for_inference(
-    policy: torch.nn.Module, *,
+    policy: torch.nn.Module,
+    *,
     enable_attention: bool = True,
     enable_kv_cache_quant: bool = True,
     enable_compile: bool = False,
@@ -301,9 +365,15 @@ def optimize_policy_for_inference(
     if enable_kv_cache_quant:
         _walk(policy, "kv_cache", bits=kv_cache_bits)
         logger.info("INT%d KV-cache applied.", kv_cache_bits)
-    if enable_compile and hasattr(torch, "compile"):
-        policy = torch.compile(policy, mode=compile_mode)
-        logger.info("torch.compile(%s) applied.", compile_mode)
+    if enable_compile:
+        if _can_compile():
+            policy = torch.compile(policy, mode=compile_mode)
+            logger.info("torch.compile(%s) applied.", compile_mode)
+        else:
+            logger.warning(
+                "torch.compile requires Triton (Linux) or Inductor C++ (Linux). "
+                "Not available on this platform. Skipping compile."
+            )
     return policy
 
 

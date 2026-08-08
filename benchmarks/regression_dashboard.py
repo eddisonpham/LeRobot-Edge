@@ -86,9 +86,7 @@ def normalize_results(
     return results
 
 
-def _normalize_list_format(
-    data: list[dict], fname: str, mtime: float
-) -> list[NormalizedResult]:
+def _normalize_list_format(data: list[dict], fname: str, mtime: float) -> list[NormalizedResult]:
     """Normalize list-of-objects format."""
     out = []
     for item in data:
@@ -113,9 +111,7 @@ def _normalize_list_format(
     return out
 
 
-def _normalize_dict_format(
-    data: dict, fname: str, mtime: float
-) -> list[NormalizedResult]:
+def _normalize_dict_format(data: dict, fname: str, mtime: float) -> list[NormalizedResult]:
     """Normalize dict formats (bench_large.py and compare_backends.py)."""
     out = []
     model = data.get("config") or data.get("model", fname)
@@ -134,17 +130,11 @@ def _normalize_dict_format(
                                 source_mtime=mtime,
                                 model=model,
                                 method=key,
-                                compile_mode=(
-                                    "reduce-overhead"
-                                    if data.get("compiled")
-                                    else None
-                                ),
+                                compile_mode=("reduce-overhead" if data.get("compiled") else None),
                                 batch_size=bs,
                                 latency_mean_ms=metrics.get("mean_ms", 0),
                                 throughput_fps=metrics.get("throughput", 0),
-                                memory_mb=data.get(
-                                    f"{key}_memory_mb", 0
-                                ),
+                                memory_mb=data.get(f"{key}_memory_mb", 0),
                                 raw=metrics,
                             )
                         )
@@ -159,9 +149,7 @@ def _normalize_dict_format(
                     source_mtime=mtime,
                     model=model,
                     method=key,
-                    compile_mode=(
-                        "reduce-overhead" if "compiled" in key else None
-                    ),
+                    compile_mode=("reduce-overhead" if "compiled" in key else None),
                     batch_size=1,  # compare_backends defaults to bs=1
                     latency_mean_ms=value.get("latency_mean_ms", 0),
                     throughput_fps=value.get("throughput_fps", 0),
@@ -276,9 +264,7 @@ def compute_regressions(
     return regressions, summary
 
 
-def _classify(
-    pct: float, threshold: float, higher_is_worse: bool
-) -> str:
+def _classify(pct: float, threshold: float, higher_is_worse: bool) -> str:
     """Classify a percentage change."""
     abs_pct = abs(pct)
     if abs_pct <= threshold:
@@ -347,9 +333,7 @@ def print_dashboard(
         # Sort: regressions first, then by abs change
         model_regs.sort(
             key=lambda r: (
-                0 if r.severity == "regression"
-                else 1 if r.severity == "improvement"
-                else 2,
+                0 if r.severity == "regression" else 1 if r.severity == "improvement" else 2,
                 -abs(r.change_pct),
             )
         )

@@ -152,9 +152,7 @@ class ExperimentRunner:
         elif method == "int4":
             from lerobot_edge.compression.quantize import quantize_int4_weight_only
 
-            quantized = quantize_int4_weight_only(
-                copy.deepcopy(policy), group_size=32
-            )
+            quantized = quantize_int4_weight_only(copy.deepcopy(policy), group_size=32)
             quant_type = "int4_weight_only"
         elif method == "nf4":
             from lerobot_edge.compression.quantize import quantize_4bit
@@ -204,9 +202,7 @@ class ExperimentRunner:
                 if isinstance(v, torch.Tensor):
                     shape = list(v.shape)
                     shape[0] = batch_size
-                    batch[k] = torch.randn(
-                        shape, device=self.device, dtype=v.dtype
-                    )
+                    batch[k] = torch.randn(shape, device=self.device, dtype=v.dtype)
                 else:
                     batch[k] = v
 
@@ -324,9 +320,7 @@ class ExperimentRunner:
                         logger.error("Bench failed: %s", e)
                         continue
 
-                    quant_type = getattr(
-                        backend, "_quantization_type", method
-                    )
+                    quant_type = getattr(backend, "_quantization_type", method)
                     results.append(
                         ExperimentResult(
                             method=quant_type,
@@ -470,9 +464,7 @@ class ExperimentRunner:
                 speedups[f"bs={batch_size}"][key] = {
                     "latency_ms": r.latency_mean_ms,
                     "speedup": (
-                        baseline.latency_mean_ms / r.latency_mean_ms
-                        if r.latency_mean_ms > 0
-                        else 0
+                        baseline.latency_mean_ms / r.latency_mean_ms if r.latency_mean_ms > 0 else 0
                     ),
                     "memory_ratio": (
                         r.model_memory_mb / baseline.model_memory_mb
@@ -507,9 +499,7 @@ def run_experiment_grid(
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Run systematic A/B experiment grid"
-    )
+    parser = argparse.ArgumentParser(description="Run systematic A/B experiment grid")
     parser.add_argument(
         "--checkpoint",
         type=str,
@@ -546,24 +536,16 @@ def main() -> None:
         action="store_true",
         help="Test CUDA graph capture",
     )
-    parser.add_argument(
-        "--warmup", type=int, default=30, help="Warmup runs"
-    )
-    parser.add_argument(
-        "--num-runs", type=int, default=200, help="Benchmark runs"
-    )
+    parser.add_argument("--warmup", type=int, default=30, help="Warmup runs")
+    parser.add_argument("--num-runs", type=int, default=200, help="Benchmark runs")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     # Parse compile modes
     compile_modes: list[str | None] | None = None
     if args.compile_modes:
-        compile_modes = [
-            None if m.lower() == "none" else m for m in args.compile_modes
-        ]
+        compile_modes = [None if m.lower() == "none" else m for m in args.compile_modes]
 
     runner = ExperimentRunner(
         checkpoint=args.checkpoint,
@@ -586,9 +568,7 @@ def main() -> None:
         print("\nSpeedups vs FP32 baseline:")
         for bs_key, variants in speedups.items():
             print(f"  {bs_key}:")
-            for name, data in sorted(
-                variants.items(), key=lambda x: x[1]["speedup"], reverse=True
-            ):
+            for name, data in sorted(variants.items(), key=lambda x: x[1]["speedup"], reverse=True):
                 marker = " 🔥" if data["speedup"] > 1.5 else ""
                 print(
                     f"    {name:<35} "

@@ -364,7 +364,9 @@ def print_results_table(results: list[CompileInt4Result]) -> None:
         subset.sort(key=lambda r: r.latency_mean_ms)
 
         print(f"\n  Batch Size = {bs}")
-        print(f"  {'Quant':<6} {'Compile':<18} {'Mean(ms)':<10} {'P50(ms)':<10} {'P95(ms)':<10} {'FPS':<8} {'Mem(MB)':<10} {'Peak(MB)':<10} {'Compile(s)':<10}")
+        print(
+            f"  {'Quant':<6} {'Compile':<18} {'Mean(ms)':<10} {'P50(ms)':<10} {'P95(ms)':<10} {'FPS':<8} {'Mem(MB)':<10} {'Peak(MB)':<10} {'Compile(s)':<10}"
+        )
         print(f"  {'-' * 90}")
 
         baseline_ms = None
@@ -416,8 +418,10 @@ def print_results_table(results: list[CompileInt4Result]) -> None:
         int4_results = [r for r in results if r.quantization == "int4"]
         if int4_results:
             int4_mem = int4_results[0].model_memory_mb
-            print(f"\n  Memory: FP32={fp32_mem:.0f}MB  INT4={int4_mem:.0f}MB  "
-                  f"({fp32_mem/int4_mem:.2f}x reduction)")
+            print(
+                f"\n  Memory: FP32={fp32_mem:.0f}MB  INT4={int4_mem:.0f}MB  "
+                f"({fp32_mem / int4_mem:.2f}x reduction)"
+            )
 
     print(f"{'=' * 95}\n")
 
@@ -438,7 +442,9 @@ def compute_speedups(results: list[CompileInt4Result]) -> dict:
                 key += f"+compile={r.compile_mode}"
             speedups[f"bs={bs}"][key] = {
                 "latency_ms": r.latency_mean_ms,
-                "speedup": round(baseline_ms / r.latency_mean_ms, 3) if r.latency_mean_ms > 0 else 0,
+                "speedup": round(baseline_ms / r.latency_mean_ms, 3)
+                if r.latency_mean_ms > 0
+                else 0,
                 "memory_mb": r.model_memory_mb,
             }
     return speedups
@@ -450,9 +456,7 @@ def compute_speedups(results: list[CompileInt4Result]) -> dict:
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Benchmark torch.compile + INT4 kernel fusion"
-    )
+    parser = argparse.ArgumentParser(description="Benchmark torch.compile + INT4 kernel fusion")
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
     parser.add_argument(
         "--config",
@@ -486,11 +490,7 @@ def main() -> None:
     if args.config == "custom" and (args.layers is None or args.dim is None):
         parser.error("--config custom requires --layers and --dim")
 
-    batch_sizes = (
-        [int(x) for x in args.batch_sizes.split(",")]
-        if args.batch_sizes
-        else None
-    )
+    batch_sizes = [int(x) for x in args.batch_sizes.split(",")] if args.batch_sizes else None
 
     results = run_compile_int4_benchmark(
         device=args.device,

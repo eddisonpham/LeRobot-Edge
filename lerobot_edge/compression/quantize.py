@@ -69,9 +69,7 @@ def quantize_int4_weight_only(
             "Install with: pip install torchao>=0.17.0"
         )
 
-    linear_count = sum(
-        1 for _, m in model.named_modules() if isinstance(m, nn.Linear)
-    )
+    linear_count = sum(1 for _, m in model.named_modules() if isinstance(m, nn.Linear))
     if linear_count == 0:
         logger.warning("No nn.Linear modules found to quantize.")
         return model
@@ -85,8 +83,7 @@ def quantize_int4_weight_only(
 
         torchao_quantize(model, torchao_int4_weight_only(**kwargs))
         logger.info(
-            "torchao INT4 weight-only applied to %d Linear layers "
-            "(group_size=%d, layout=%s)",
+            "torchao INT4 weight-only applied to %d Linear layers (group_size=%d, layout=%s)",
             linear_count,
             group_size,
             layout or "default",
@@ -195,29 +192,21 @@ if HAS_TORCHAO:
         target_dtype: torch.dtype = torch.uint8
 
     @register_quantize_module_handler(StaticQuantConfig)
-    def _apply_static_quant(
-        module: nn.Module, config: StaticQuantConfig
-    ) -> QuantizedLinear:
+    def _apply_static_quant(module: nn.Module, config: StaticQuantConfig) -> QuantizedLinear:
         return QuantizedLinear.from_observed(module, config.target_dtype)  # type: ignore[arg-type]
 
-    def _insert_observers(
-        model: nn.Module, act_obs: nn.Module, weight_obs: nn.Module
-    ) -> None:
+    def _insert_observers(model: nn.Module, act_obs: nn.Module, weight_obs: nn.Module) -> None:
         def _is_linear(m: nn.Module, fqn: str) -> bool:
             return isinstance(m, nn.Linear)
 
         def replacement_fn(m: nn.Module) -> ObservedLinear:
-            return ObservedLinear.from_float(
-                m, copy.deepcopy(act_obs), copy.deepcopy(weight_obs)
-            )  # type: ignore[arg-type]
+            return ObservedLinear.from_float(m, copy.deepcopy(act_obs), copy.deepcopy(weight_obs))  # type: ignore[arg-type]
 
         _replace_with_custom_fn_if_matches_filter(model, replacement_fn, _is_linear)
 
 
 def dynamic_int8_quantize(model: nn.Module) -> nn.Module:
-    quantizable = [
-        m for _, m in model.named_modules() if isinstance(m, nn.Linear)
-    ]
+    quantizable = [m for _, m in model.named_modules() if isinstance(m, nn.Linear)]
     if not quantizable:
         logger.warning("No nn.Linear modules found to quantize.")
         return model
@@ -232,14 +221,11 @@ def dynamic_int8_quantize(model: nn.Module) -> nn.Module:
             )
             return model
         except Exception as e:
-            logger.warning(
-                "Dynamic INT8 quantization failed: %s. Returning original.", e
-            )
+            logger.warning("Dynamic INT8 quantization failed: %s. Returning original.", e)
             return model
 
     raise ImportError(
-        "torchao is required for dynamic INT8 quantization. "
-        "Install with: pip install torchao"
+        "torchao is required for dynamic INT8 quantization. Install with: pip install torchao"
     )
 
 
@@ -251,9 +237,7 @@ def static_int8_quantize(
     if not calibration_data:
         raise ValueError("calibration_data must not be empty")
 
-    tensors = [
-        v for v in calibration_data.values() if isinstance(v, torch.Tensor)
-    ]
+    tensors = [v for v in calibration_data.values() if isinstance(v, torch.Tensor)]
     if not tensors:
         raise ValueError(
             "calibration_data must contain at least one tensor value. "
@@ -297,8 +281,7 @@ def static_int8_quantize(
             raise RuntimeError(f"torchao static quantization failed: {e}") from e
 
     raise ImportError(
-        "torchao is required for static INT8 quantization. "
-        "Install with: pip install torchao"
+        "torchao is required for static INT8 quantization. Install with: pip install torchao"
     )
 
 
@@ -339,9 +322,7 @@ def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
     from bitsandbytes.nn.modules import Linear4bit
 
     linear_layers = [
-        (name, module)
-        for name, module in model.named_modules()
-        if isinstance(module, nn.Linear)
+        (name, module) for name, module in model.named_modules() if isinstance(module, nn.Linear)
     ]
     if not linear_layers:
         logger.warning("No nn.Linear modules found to quantize.")
@@ -351,13 +332,9 @@ def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
     for name, module in linear_layers:
         parent_name, _, child_name = name.rpartition(".")
         parent = model if not parent_name else modules_dict[parent_name]
-        w4, state = bnb_func.quantize_4bit(
-            module.weight.data.float(), quant_type=quant_type
-        )
+        w4, state = bnb_func.quantize_4bit(module.weight.data.float(), quant_type=quant_type)
         compute_dtype = (
-            torch.float16
-            if module.weight.device.type == "cuda"
-            else module.weight.dtype
+            torch.float16 if module.weight.device.type == "cuda" else module.weight.dtype
         )
         new_layer = Linear4bit(
             module.in_features,
@@ -371,9 +348,7 @@ def quantize_4bit(model: nn.Module, quant_type: str = "nf4") -> nn.Module:
             w4, requires_grad=False, quant_type=quant_type, quant_state=state
         )
         if module.bias is not None:
-            new_layer.bias = nn.Parameter(
-                module.bias.data.clone(), requires_grad=False
-            )
+            new_layer.bias = nn.Parameter(module.bias.data.clone(), requires_grad=False)
         setattr(parent, child_name, new_layer)
 
     _wrap_with_dtype_adapter(model)
@@ -396,9 +371,7 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
     from bitsandbytes.nn import Int8Params, Linear8bitLt
 
     linear_layers = [
-        (name, module)
-        for name, module in model.named_modules()
-        if isinstance(module, nn.Linear)
+        (name, module) for name, module in model.named_modules() if isinstance(module, nn.Linear)
     ]
     if not linear_layers:
         logger.warning("No nn.Linear modules found to quantize.")
@@ -415,13 +388,9 @@ def quantize_bnb_int8(model: nn.Module) -> nn.Module:
             has_fp16_weights=False,
             threshold=6.0,
         )
-        new_layer.weight = Int8Params(
-            module.weight.data.half(), requires_grad=False
-        )
+        new_layer.weight = Int8Params(module.weight.data.half(), requires_grad=False)
         if module.bias is not None:
-            new_layer.bias = nn.Parameter(
-                module.bias.half(), requires_grad=False
-            )
+            new_layer.bias = nn.Parameter(module.bias.half(), requires_grad=False)
         setattr(parent, child_name, new_layer)
 
     logger.info(
@@ -487,9 +456,7 @@ class QuantizedBackend(NativePyTorchBackend):
             quantized = dynamic_int8_quantize(policy)
             quant_type = "dynamic_int8"
         else:
-            logger.warning(
-                "No quantization specified. Using FP32 baseline."
-            )
+            logger.warning("No quantization specified. Using FP32 baseline.")
             quantized = policy
             quant_type = "fp32"
 
@@ -553,9 +520,7 @@ def main() -> None:
     from lerobot_edge.core.utils import load_policy_from_checkpoint
 
     try:
-        policy = load_policy_from_checkpoint(
-            args.source, "smolvla", args.device
-        )
+        policy = load_policy_from_checkpoint(args.source, "smolvla", args.device)
     except Exception as e:
         logger.error("Failed to load policy: %s", e)
         return
@@ -571,15 +536,11 @@ def main() -> None:
     if args.method == "dynamic_int8":
         quantized = dynamic_int8_quantize(policy)
     elif args.method == "static_int8":
-        logger.warning(
-            "Static INT8 requires calibration data. Using dummy calibration."
-        )
+        logger.warning("Static INT8 requires calibration data. Using dummy calibration.")
         calibration_data = {"observation.state": torch.randn(1, 2)}
         quantized = static_int8_quantize(policy, calibration_data)
     elif args.method in ("int4", "4bit"):
-        quantized = quantize_int4_weight_only(
-            policy, group_size=args.int4_group_size
-        )
+        quantized = quantize_int4_weight_only(policy, group_size=args.int4_group_size)
     elif args.method == "bnb_int8":
         quantized = quantize_bnb_int8(policy)
     elif args.method == "nf4":
@@ -591,9 +552,7 @@ def main() -> None:
         return
 
     quantized_mem = measure_model_memory(quantized)
-    reduction = (
-        (1 - quantized_mem["total_mb"] / original_mem["total_mb"]) * 100
-    )
+    reduction = (1 - quantized_mem["total_mb"] / original_mem["total_mb"]) * 100
     logger.info(
         "Quantized model: %.1f MB, %d parameters (%.1f%% reduction)",
         quantized_mem["total_mb"],

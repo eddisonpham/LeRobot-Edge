@@ -1,16 +1,34 @@
 # LeRobot Edge
 
-Quantization, export, and benchmarking for deploying [LeRobot](https://github.com/huggingface/lerobot) policies on edge GPUs. Zero source modifications — install and change your policy type.
+Quantization, export, and benchmarking for deploying [LeRobot](https://github.com/huggingface/lerobot) policies on edge GPUs. Zero source modifications.
 
 ## Install
 
 ```bash
-pip install lerobot-edge                    # core (torchao INT8/INT4)
+pip install lerobot-edge                    # core
 pip install "lerobot-edge[quantize]"        # bitsandbytes NF4/FP4
 pip install "lerobot-edge[onnx]"            # ONNX export
-pip install "lerobot-edge[wandb]"           # experiment tracking
 pip install "lerobot-edge[all]"             # everything
 ```
+
+## Platform support
+
+```bash
+python -c "from lerobot_edge.core import get_platform_info; import json; print(json.dumps(get_platform_info(), indent=2, default=str))"
+```
+
+| Feature | Linux | Windows |
+|---------|-------|---------|
+| SDPA/FlashAttention | ✅ | ✅ |
+| INT8 KV-cache quant | ✅ | ✅ |
+| torchao INT4 quant | ✅ | ✅ |
+| bitsandbytes NF4/FP4 | ✅ | ✅ |
+| `torch.compile` | ✅ (Triton) | ❌ |
+| CUDA graphs | ✅ | ✅ |
+| ONNX export | ✅ | ✅ |
+| TensorRT | ✅ | ❌ |
+
+`torch.compile` requires Triton (Linux). On Windows, all optimizations except compile work and are auto-detected.
 
 ## Quickstart
 
@@ -24,7 +42,7 @@ lerobot-edge-quantize --source lerobot/smolvla_base --output ./quantized --metho
 # Benchmark all backends
 python -m benchmarks.bench_smolvla --batch-sizes 1,4
 
-# Systematic A/B experiment grid
+# A/B experiment grid
 lerobot-edge-experiment --checkpoint lerobot/smolvla_base --methods fp32 int4
 
 # Regression dashboard
@@ -46,11 +64,11 @@ lerobot-edge-regression --dirs benchmark_results
 
 ## Optimizations
 
-Three optimizations are applied automatically at load time:
+Three optimizations applied at load time (auto-detect capability):
 
-1. **SDPA/FlashAttention** — replaces eager matmul attention (2.06× speedup on SmolVLA)
-2. **INT8 KV-cache** — compresses cached key/value states (3.98× reduction, lossless)
-3. **torchao INT4** — weight-only quantization (4× memory reduction)
+1. **SDPA/FlashAttention** — 2.06× speedup on SmolVLA
+2. **INT8 KV-cache** — 3.98× compression, lossless
+3. **torchao INT4** — 4× memory reduction
 
 ```python
 from lerobot_edge.optimization import optimize_policy_for_inference
@@ -58,13 +76,13 @@ from lerobot_edge.optimization import optimize_policy_for_inference
 policy = optimize_policy_for_inference(policy,
     enable_attention=True,          # SDPA/FlashAttention
     enable_kv_cache_quant=True,     # INT8 KV-cache
-    enable_compile=False,           # torch.compile (Linux + Triton)
+    enable_compile=False,           # torch.compile (Linux only)
 )
 ```
 
 ## Benchmarks
 
-SmolVLA (450M params) on RTX 5060 Laptop (7 GB), batch=1:
+SmolVLA (450M) on RTX 5060 (7 GB), bs=1:
 
 | Backend | Latency | Memory |
 |---------|---------|--------|
@@ -72,16 +90,16 @@ SmolVLA (450M params) on RTX 5060 Laptop (7 GB), batch=1:
 | FP16 + SDPA | 8.49 ms | 571 MB |
 | NF4 + SDPA | 8.92 ms | 287 MB |
 
-SDPA delivers 2.06× over eager attention (18.07→8.77 ms). NF4 gives 3.97× memory reduction.
+SDPA: 2.06× over eager (18.07→8.77 ms). NF4: 3.97× less memory.
 
-## Development
+## Dev
 
 ```bash
-make install-dev   # pip install -e ".[dev,all]"
-make test          # fast unit tests
-make lint          # ruff check
-make format        # ruff format
-make typecheck     # mypy
+make install-dev
+make test
+make lint
+make format
+make typecheck
 ```
 
 ## License
