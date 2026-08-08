@@ -76,6 +76,9 @@ Repository = "https://github.com/lerobot-edge/lerobot-edge"
 [tool.setuptools.packages.find]
 include = ["lerobot_edge*"]
 
+[tool.setuptools.package-data]
+lerobot_edge = ["*.png"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
