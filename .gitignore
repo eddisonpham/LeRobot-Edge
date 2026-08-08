@@ -52,3 +52,7 @@ wandb/
 
 # Documentation assets
 docs/
+
+# Agent context files (generated)
+Agent Context/
+Agent%20Context/

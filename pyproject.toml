@@ -62,6 +62,7 @@ all = [
 lerobot-edge-benchmark = "lerobot_edge.evaluation.benchmark:main"
 lerobot-edge-quantize = "lerobot_edge.compression.quantize:main"
 lerobot-edge-report = "lerobot_edge.evaluation.report:main"
+lerobot-edge-experiment = "lerobot_edge.evaluation.experiment:main"
 
 [project.urls]
 Homepage = "https://github.com/lerobot-edge/lerobot-edge"

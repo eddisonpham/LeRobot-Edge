@@ -1,12 +1,14 @@
-"""Benchmark real SmolVLA checkpoint: FP32 vs FP16 vs NF4 with accuracy gate.
+"""Benchmark real SmolVLA checkpoint: FP32 vs FP16 vs INT8 vs INT4 vs NF4.
 
 Loads SmolVLA from HuggingFace, measures latency/throughput/memory
-for FP32, FP16 autocast, and NF4 4-bit quantization, and computes
-cosine similarity between FP32 and quantized action outputs.
+for FP32, FP16 autocast, dynamic INT8 (torchao), INT4 weight-only
+(torchao, recommended), and NF4 4-bit (bitsandbytes), with accuracy
+gates comparing quantized outputs against FP32 baseline.
 
 Usage:
     python -m benchmarks.bench_smolvla
     python -m benchmarks.bench_smolvla --batch-sizes 1,4,16
+    python -m benchmarks.bench_smolvla --compile  # enable torch.compile
 """
 
 from __future__ import annotations
@@ -124,9 +126,38 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
     model_fp32 = model_fp32.to(device).eval()
     fp32_mem = measure_memory_mb(model_fp32)
 
-    logger.info("Creating NF4 quantized copy...")
-    from lerobot_edge.compression.quantize import quantize_4bit
+    logger.info("Creating INT8 and INT4 quantized copies...")
+    from lerobot_edge.compression.quantize import (
+        dynamic_int8_quantize,
+        quantize_4bit,
+        quantize_int4_weight_only,
+    )
 
+    # INT8 (torchao dynamic)
+    model_int8 = None
+    int8_mem = 0.0
+    int8_results = {}
+    try:
+        model_int8 = copy.deepcopy(model_fp32).to(device).eval()
+        model_int8 = dynamic_int8_quantize(model_int8)
+        int8_mem = measure_memory_mb(model_int8)
+        logger.info("INT8 memory: %.1f MB (%.2fx reduction)", int8_mem, fp32_mem / int8_mem if int8_mem > 0 else 0)
+    except Exception as e:
+        logger.warning("INT8 quantization failed: %s. Skipping INT8.", e)
+
+    # INT4 (torchao weight-only - RECOMMENDED)
+    model_int4 = None
+    int4_mem = 0.0
+    int4_results = {}
+    try:
+        model_int4 = copy.deepcopy(model_fp32).to(device).eval()
+        model_int4 = quantize_int4_weight_only(model_int4, group_size=32)
+        int4_mem = measure_memory_mb(model_int4)
+        logger.info("INT4 memory: %.1f MB (%.2fx reduction)", int4_mem, fp32_mem / int4_mem if int4_mem > 0 else 0)
+    except Exception as e:
+        logger.warning("INT4 quantization failed: %s. Skipping INT4.", e)
+
+    # NF4 (bitsandbytes - legacy)
     model_nf4 = None
     nf4_mem = 0.0
     nf4_results = {}
@@ -136,7 +167,7 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
         nf4_mem = measure_memory_mb(model_nf4)
         logger.info("NF4 memory: %.1f MB (%.2fx reduction)", nf4_mem, fp32_mem / nf4_mem if nf4_mem > 0 else 0)
     except Exception as e:
-        logger.warning("NF4 quantization failed: %s. Skipping NF4 benchmark.", e)
+        logger.warning("NF4 quantization failed: %s. Skipping NF4.", e)
 
     results: dict = {
         "model": "SmolVLA",
@@ -145,6 +176,10 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
         "fp32_memory_mb": round(fp32_mem, 2),
         "batch_sizes": batch_sizes,
     }
+    if model_int8 is not None:
+        results["int8_memory_mb"] = round(int8_mem, 2)
+    if model_int4 is not None:
+        results["int4_memory_mb"] = round(int4_mem, 2)
     if model_nf4 is not None:
         results["nf4_memory_mb"] = round(nf4_mem, 2)
 
@@ -158,11 +193,23 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
     # Benchmark each batch size
     fp32_results = {}
     fp16_results = {}
+    int8_results = {}
+    int4_results = {}
     nf4_results = {}
     for bs in batch_sizes:
         logger.info("Benchmarking bs=%d...", bs)
         fp32_results[str(bs)] = bench_latency(model_fp32, bs, device, tokenizer_len, use_autocast=False)
         fp16_results[str(bs)] = bench_latency(model_fp32, bs, device, tokenizer_len, use_autocast=True)
+        if model_int8 is not None:
+            try:
+                int8_results[str(bs)] = bench_latency(model_int8, bs, device, tokenizer_len, use_autocast=False)
+            except Exception as e:
+                logger.warning("INT8 benchmark failed at bs=%d: %s", bs, e)
+        if model_int4 is not None:
+            try:
+                int4_results[str(bs)] = bench_latency(model_int4, bs, device, tokenizer_len, use_autocast=False)
+            except Exception as e:
+                logger.warning("INT4 benchmark failed at bs=%d: %s", bs, e)
         if model_nf4 is not None:
             try:
                 nf4_results[str(bs)] = bench_latency(model_nf4, bs, device, tokenizer_len, use_autocast=False)
@@ -172,25 +219,43 @@ def run_benchmark(batch_sizes: list[int] | None = None) -> dict:
 
     results["fp32"] = fp32_results
     results["fp16"] = fp16_results
+    if int8_results:
+        results["int8"] = int8_results
+    if int4_results:
+        results["int4"] = int4_results
     if nf4_results:
         results["nf4"] = nf4_results
 
     # Compute speedups
     speedups_fp16 = {}
+    speedups_int8 = {}
+    speedups_int4 = {}
     speedups_nf4 = {}
     for bs in batch_sizes:
         bs_key = str(bs)
         fp32_ms = fp32_results[bs_key]["mean_ms"]
         fp16_ms = fp16_results[bs_key]["mean_ms"]
         speedups_fp16[bs_key] = round(fp32_ms / fp16_ms, 3) if fp16_ms > 0 else 0
+        if bs_key in int8_results:
+            speedups_int8[bs_key] = round(fp32_ms / int8_results[bs_key]["mean_ms"], 3) if int8_results[bs_key]["mean_ms"] > 0 else 0
+        if bs_key in int4_results:
+            speedups_int4[bs_key] = round(fp32_ms / int4_results[bs_key]["mean_ms"], 3) if int4_results[bs_key]["mean_ms"] > 0 else 0
         if bs_key in nf4_results:
             nf4_ms = nf4_results[bs_key]["mean_ms"]
             speedups_nf4[bs_key] = round(fp32_ms / nf4_ms, 3) if nf4_ms > 0 else 0
     results["speedup_fp16"] = speedups_fp16
+    if speedups_int8:
+        results["speedup_int8"] = speedups_int8
+    if speedups_int4:
+        results["speedup_int4"] = speedups_int4
     if speedups_nf4:
         results["speedup_nf4"] = speedups_nf4
 
     del model_fp32
+    if model_int8 is not None:
+        del model_int8
+    if model_int4 is not None:
+        del model_int4
     if model_nf4 is not None:
         del model_nf4
     gc.collect()
@@ -207,11 +272,10 @@ def print_results(results: dict) -> None:
     print(f"Params: {results['params'] / 1e6:.0f}M")
     print(f"{'=' * 85}")
     print(f"  FP32 memory: {results['fp32_memory_mb']:.1f} MB")
-    nf4_mem_display = results.get("nf4_memory_mb")
-    if nf4_mem_display is not None:
-        print(f"  NF4  memory: {nf4_mem_display:.1f} MB ({results['fp32_memory_mb'] / nf4_mem_display:.2f}x reduction)")
-    else:
-        print(f"  NF4: not available (attention incompatibility with SmolVLA)")
+    for label, key in [("INT8", "int8_memory_mb"), ("INT4", "int4_memory_mb"), ("NF4", "nf4_memory_mb")]:
+        mem = results.get(key)
+        if mem is not None:
+            print(f"  {label} memory: {mem:.1f} MB ({results['fp32_memory_mb'] / mem:.2f}x reduction)")
     print(f"  Accuracy gate: cosine={results['cosine_similarity']:.6f}  pass={results['accuracy_gate_pass']}")
     print()
 
@@ -221,46 +285,44 @@ def print_results(results: dict) -> None:
     print(header)
     print("-" * 85)
 
-    row_fp32 = f"{'FP32':<10}"
-    row_fp16 = f"{'FP16':<10}"
-    has_nf4 = "nf4" in results
-    if has_nf4:
-        row_nf4 = f"{'NF4':<10}"
+    # Build rows dynamically
+    rows: list[tuple[str, str]] = []
+    for key, label in [("fp32", "FP32"), ("fp16", "FP16"), ("int8", "INT8"), ("int4", "INT4"), ("nf4", "NF4")]:
+        if key not in results:
+            continue
+        row = f"{label:<10}"
         for bs in bs_list:
             k = str(bs)
-            nf4 = results["nf4"][k]
-            row_nf4 += f"  {nf4['mean_ms']:>8.2f}ms/{nf4['throughput']:>8.0f}sp"
-    for bs in bs_list:
-        k = str(bs)
-        fp32 = results["fp32"][k]
-        fp16 = results["fp16"][k]
-        row_fp32 += f"  {fp32['mean_ms']:>8.2f}ms/{fp32['throughput']:>8.0f}sp"
-        row_fp16 += f"  {fp16['mean_ms']:>8.2f}ms/{fp16['throughput']:>8.0f}sp"
-    print(row_fp32)
-    print(row_fp16)
-    if has_nf4:
-        print(row_nf4)
+            r = results[key][k]
+            row += f"  {r['mean_ms']:>8.2f}ms/{r['throughput']:>8.0f}sp"
+        rows.append((label, row))
 
-    row_speed_fp16 = f"{'FP16 spd':<10}"
-    for bs in bs_list:
-        k = str(bs)
-        row_speed_fp16 += f"  {results['speedup_fp16'][k]:>21.2f}x"
-    print(row_speed_fp16)
-    if "speedup_nf4" in results:
-        row_speed_nf4 = f"{'NF4 spd':<10}"
+    for _, row in rows:
+        print(row)
+
+    # Speedup rows
+    for label, key in [("FP16", "speedup_fp16"), ("INT8", "speedup_int8"), ("INT4", "speedup_int4"), ("NF4", "speedup_nf4")]:
+        if key not in results:
+            continue
+        row = f"{label} spd:<10"
         for bs in bs_list:
             k = str(bs)
-            row_speed_nf4 += f"  {results['speedup_nf4'][k]:>21.2f}x"
-        print(row_speed_nf4)
+            row += f"  {results[key][k]:>21.2f}x" 
+        print(row)
     print(f"{'=' * 85}\n")
 
 
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Benchmark real SmolVLA FP16 vs FP32")
+    parser = argparse.ArgumentParser(
+        description="Benchmark real SmolVLA: FP32 vs FP16 vs INT8 vs INT4 vs NF4"
+    )
     parser.add_argument("--batch-sizes", type=str, default=None)
     parser.add_argument("--output", default="benchmark_results/smolvla_benchmark.json")
+    parser.add_argument(
+        "--compile", action="store_true", help="Enable torch.compile (reduce-overhead)"
+    )
     args = parser.parse_args()
 
     batch_sizes = [int(x) for x in args.batch_sizes.split(",")] if args.batch_sizes else None

@@ -11,6 +11,7 @@ __all__ = [
     "EdgeBaseConfig",
     "EdgeIdentityConfig",
     "EdgeQuantInt8Config",
+    "EdgeQuantInt4Config",
     "EdgeQuantBnbInt8Config",
     "EdgeQuantBnbNf4Config",
     "EdgeQuantBnbFp4Config",
@@ -96,10 +97,21 @@ class EdgeQuantBnbInt8Config(EdgeBaseConfig):
     quantize_bits: int = 8
 
 
+@PreTrainedConfig.register_subclass("edge_quant_int4")
+@dataclass
+class EdgeQuantInt4Config(EdgeBaseConfig):
+    """torchao INT4 weight-only quantized variant (recommended over bnb NF4)."""
+
+    type: str = "edge_quant_int4"
+    quantize_dynamic: bool = False
+    quantize_bits: int = 4
+    int4_group_size: int = 32
+
+
 @PreTrainedConfig.register_subclass("edge_quant_bnb_nf4")
 @dataclass
 class EdgeQuantBnbNf4Config(EdgeBaseConfig):
-    """bitsandbytes NF4 4-bit quantized variant."""
+    """bitsandbytes NF4 4-bit quantized variant (legacy)."""
 
     type: str = "edge_quant_bnb_nf4"
     quantize_dynamic: bool = False

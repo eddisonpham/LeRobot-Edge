@@ -15,6 +15,7 @@ __all__ = [
     "get_git_commit_hash",
     "measure_model_memory",
     "measure_peak_memory_mb",
+    "measure_cuda_memory_mb",
     "build_dummy_input",
     "load_policy_from_checkpoint",
 ]
@@ -34,10 +35,56 @@ def get_git_commit_hash() -> str:
         return "unknown"
 
 
+def _param_byte_size(p: torch.nn.Parameter) -> int:
+    """Get true byte size of a parameter, handling tensor subclasses.
+
+    Quantized tensor subclasses (torchao AffineQuantizedTensor,
+    bitsandbytes Int8Params/Params4bit) report incorrect
+    ``element_size()``. We detect subclasses and compute actual
+    storage bytes from their internal representation.
+    """
+    cls_name = type(p).__name__
+
+    # torchao AffineQuantizedTensor
+    if "AffineQuantized" in cls_name and hasattr(p, "quantized_data"):
+        return p.quantized_data.nelement() * p.quantized_data.element_size()
+
+    # torchao quantized tensors have _data or int_data
+    if hasattr(p, "_data"):
+        inner = p._data
+        if isinstance(inner, torch.Tensor):
+            return inner.nelement() * inner.element_size()
+
+    # bitsandbytes Int8Params / Params4bit
+    if cls_name in ("Int8Params", "Params4bit") and hasattr(p, "data"):
+        inner = p.data
+        if isinstance(inner, torch.Tensor):
+            return inner.nelement() * inner.element_size()
+
+    # Default: element_size may be wrong for subclasses, compute from dtype
+    if hasattr(p, "dtype"):
+        try:
+            bits = p.dtype.itemsize * 8 if hasattr(p.dtype, "itemsize") else 0
+            if bits == 0 and hasattr(p, "quant_state"):
+                # bnb 4-bit: elements in quant_state
+                bits = 4
+                return (p.nelement() * bits) // 8
+        except Exception:
+            pass
+
+    return p.nelement() * p.element_size()
+
+
 def measure_model_memory(model: nn.Module) -> dict[str, float]:
-    """Measure the memory footprint of a model."""
-    param_bytes = sum(p.nelement() * p.element_size() for p in model.parameters())
-    buffer_bytes = sum(b.nelement() * b.element_size() for b in model.buffers())
+    """Measure the memory footprint of a model.
+
+    Handles quantized tensor subclasses (torchao, bitsandbytes)
+    by inspecting internal storage representations.
+    """
+    param_bytes = sum(_param_byte_size(p) for p in model.parameters())
+    buffer_bytes = sum(
+        b.nelement() * b.element_size() for b in model.buffers()
+    )
     total_bytes = param_bytes + buffer_bytes
     num_params = sum(p.nelement() for p in model.parameters())
 
@@ -53,7 +100,12 @@ def measure_model_memory(model: nn.Module) -> dict[str, float]:
 
 
 def measure_peak_memory_mb() -> float:
-    """Measure current peak memory usage in MB."""
+    """Measure current peak GPU/CPU memory usage in MB.
+
+    On CUDA: uses ``torch.cuda.max_memory_allocated()`` (accurate, driver-level).
+    On CPU: uses ``resource.getrusage(RUSAGE_SELF)`` on Unix;
+    returns 0 on Windows.
+    """
     if torch.cuda.is_available():
         return torch.cuda.max_memory_allocated() / (1024 * 1024)
     else:
@@ -61,9 +113,26 @@ def measure_peak_memory_mb() -> float:
             import resource
 
             usage = resource.getrusage(resource.RUSAGE_SELF)  # type: ignore[attr-defined]
-            return float(usage.ru_maxrss) / 1024
+            # macOS returns bytes, Linux returns KB
+            rss_kb = float(usage.ru_maxrss)
+            if hasattr(resource, "RUSAGE_SELF"):
+                # Heuristic: if RSS > 10M in KB, likely bytes (macOS)
+                if rss_kb > 10_000_000:
+                    rss_kb /= 1024
+            return rss_kb / 1024
         except (ImportError, AttributeError):
             return 0.0
+
+
+def measure_cuda_memory_mb() -> float:
+    """Measure current CUDA memory allocated (MB).
+
+    Returns 0.0 if CUDA is not available. This is more precise than
+    ``measure_peak_memory_mb()`` for current-usage scenarios.
+    """
+    if torch.cuda.is_available():
+        return torch.cuda.memory_allocated() / (1024 * 1024)
+    return 0.0
 
 
 def build_dummy_input(policy: nn.Module, device: torch.device) -> dict[str, torch.Tensor]:

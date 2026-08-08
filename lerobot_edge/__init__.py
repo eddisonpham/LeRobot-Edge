@@ -10,12 +10,14 @@ from lerobot_edge.core.configs import (  # noqa: F401, E402
     EdgeIdentityConfig,
     EdgeOnnxFp32Config,
     EdgeOnnxInt8Config,
+    EdgeQuantInt4Config,
     EdgeQuantInt8Config,
 )
 
 __all__ = [
     "EdgeIdentityConfig",
     "EdgeQuantInt8Config",
+    "EdgeQuantInt4Config",
     "EdgeOnnxFp32Config",
     "EdgeOnnxInt8Config",
 ]

@@ -98,9 +98,13 @@ class TestBuildBackendQuantization:
             patch("lerobot.policies.factory.make_policy_config", return_value=MagicMock()),
         ):
             backend = policy._build_backend_from_checkpoint("dummy", config)
-        from lerobot_edge.compression.quantize import QuantizedBackend
+        from lerobot_edge.compression.quantize import HAS_TORCHAO, QuantizedBackend
 
-        assert isinstance(backend, QuantizedBackend)
+        if HAS_TORCHAO:
+            assert isinstance(backend, QuantizedBackend)
+        else:
+            # Without torchao, falls back to IdentityBackend gracefully
+            assert isinstance(backend, IdentityBackend)
 
 
 class TestBuildBackendFailureFallback:

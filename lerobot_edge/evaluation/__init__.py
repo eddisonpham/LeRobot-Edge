@@ -15,6 +15,11 @@ from lerobot_edge.evaluation.metrics import (
     compare_backends,
     measure_output_divergence,
 )
+from lerobot_edge.evaluation.experiment import (
+    ExperimentResult,
+    ExperimentRunner,
+    run_experiment_grid,
+)
 from lerobot_edge.evaluation.report import (
     aggregate_results,
     generate_report,
@@ -39,4 +44,7 @@ __all__ = [
     "generate_report",
     "generate_results_table",
     "plot_pareto_frontier",
+    "ExperimentRunner",
+    "ExperimentResult",
+    "run_experiment_grid",
 ]

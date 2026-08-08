@@ -26,6 +26,7 @@ __all__ = [
     "NativePyTorchBackend",
     "IdentityBackend",
     "CompiledBackend",
+    "CUDAGraphBackend",
     "CompressedPolicy",
 ]
 
@@ -89,26 +90,56 @@ class _PredictWrapper(nn.Module):
 
 
 class CompiledBackend(DeploymentBackend):
-    """Wraps a backend with torch.compile for kernel fusion."""
+    """Wraps a backend with ``torch.compile`` for kernel fusion.
+
+    Default mode is ``reduce-overhead`` (uses CUDA graphs internally)
+    which is optimal for inference latency. Use ``max-autotune`` for
+    absolute lowest latency at the cost of long first-run compilation.
+    """
 
     def __init__(
         self,
         backend: DeploymentBackend,
-        mode: str = "max-autotune",
+        mode: str = "reduce-overhead",
         fullgraph: bool = False,
+        dynamic: bool = False,
     ) -> None:
         if not hasattr(torch, "compile"):
             raise ImportError("torch.compile requires PyTorch >= 2.0")
         self._backend = backend
         self._mode = mode
         self._fullgraph = fullgraph
+        self._dynamic = dynamic
         wrapper = _PredictWrapper(backend)
         self._compiled = torch.compile(
             wrapper,
             mode=mode,
             fullgraph=fullgraph,
+            dynamic=dynamic,
         )
-        logger.info("CompiledBackend created (mode=%s)", mode)
+        self._warmed_up = False
+        logger.info(
+            "CompiledBackend created (mode=%s, fullgraph=%s, dynamic=%s)",
+            mode,
+            fullgraph,
+            dynamic,
+        )
+
+    def warmup(self, batch: dict[str, torch.Tensor], runs: int = 10) -> None:
+        """Warm up the compiled function with representative inputs.
+
+        This triggers the initial compilation and, for ``reduce-overhead``
+        and ``max-autotune`` modes, captures CUDA graphs. Must be called
+        before benchmarking.
+        """
+        if self._warmed_up:
+            return
+        for _ in range(runs):
+            self._compiled(batch)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        self._warmed_up = True
+        logger.info("CompiledBackend warmed up (%d runs)", runs)
 
     def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         return self._compiled(batch)  # type: ignore[no-any-return]
@@ -117,6 +148,111 @@ class CompiledBackend(DeploymentBackend):
         self._backend.reset()
         if hasattr(torch, "_dynamo"):
             torch._dynamo.reset()
+        self._warmed_up = False
+
+    @property
+    def device(self) -> torch.device:
+        return self._backend.device
+
+    @property
+    def parameters(self) -> list[nn.Parameter]:
+        return self._backend.parameters
+
+
+class CUDAGraphBackend(DeploymentBackend):
+    """Ultra-low-latency backend using manual CUDA graph capture.
+
+    Captures the entire ``predict`` path into a single CUDA graph for
+    sub-100μs kernel launch overhead. Requires static input shapes and
+    that the backend does not have data-dependent control flow.
+
+    Usage:
+        >>> backend = CUDAGraphBackend(identity_backend)
+        >>> backend.capture(dummy_batch)  # one-time capture
+        >>> action = backend.predict(dummy_batch)  # replay (fast)
+    """
+
+    def __init__(
+        self,
+        backend: DeploymentBackend,
+        pool_size: int = 1,
+    ) -> None:
+        if backend.device.type != "cuda":
+            raise ValueError(
+                f"CUDAGraphBackend requires a CUDA backend, "
+                f"got {backend.device.type}"
+            )
+        self._backend = backend
+        self._pool_size = pool_size
+        self._graph: torch.cuda.CUDAGraph | None = None
+        self._static_input: dict[str, torch.Tensor] | None = None
+        self._static_output: torch.Tensor | None = None
+        self._captured = False
+
+    def capture(self, batch: dict[str, torch.Tensor]) -> None:
+        """Capture the CUDA graph with the given batch as template.
+
+        The batch tensor shapes are frozen at capture time. Subsequent
+        calls to ``predict()`` must use tensors with the same shapes.
+        Copy new data into the captured tensors with ``.copy_()``.
+        """
+        if self._captured:
+            return
+
+        # Move to CUDA and create persistent copies for graph capture
+        static_input = {}
+        for key, val in batch.items():
+            if isinstance(val, torch.Tensor):
+                static_input[key] = val.clone().to(self._backend.device)
+            else:
+                static_input[key] = val
+
+        # Warm up CUDA allocator
+        s = torch.cuda.Stream()
+        s.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(s):
+            for _ in range(3):
+                self._backend.predict(static_input)
+        torch.cuda.current_stream().wait_stream(s)
+
+        # Capture
+        self._graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self._graph):
+            self._static_output = self._backend.predict(static_input)
+
+        self._static_input = static_input
+        self._captured = True
+        logger.info(
+            "CUDAGraphBackend captured graph (device=%s, pool_size=%d)",
+            self._backend.device,
+            self._pool_size,
+        )
+
+    def predict(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        if not self._captured or self._graph is None:
+            # Auto-capture on first call
+            self.capture(batch)
+
+        assert self._static_input is not None
+        assert self._static_output is not None
+        assert self._graph is not None
+
+        # Copy new data into static input tensors
+        for key, static_val in self._static_input.items():
+            if isinstance(static_val, torch.Tensor) and key in batch:
+                src = batch[key]
+                if isinstance(src, torch.Tensor):
+                    static_val.copy_(src)
+
+        self._graph.replay()
+        return self._static_output.clone()
+
+    def reset(self) -> None:
+        self._backend.reset()
+        self._graph = None
+        self._static_input = None
+        self._static_output = None
+        self._captured = False
 
     @property
     def device(self) -> torch.device:

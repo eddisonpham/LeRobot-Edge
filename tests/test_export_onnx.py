@@ -119,7 +119,10 @@ class TestOnnxExport:
 class TestOnnxRuntimeBackend:
     """Test ONNX Runtime backend."""
 
-    @pytest.mark.skipif(not _has_ort(), reason="onnxruntime package not installed")
+    @pytest.mark.skipif(
+        not (_has_onnx() and _has_ort()),
+        reason="onnx or onnxruntime package not installed",
+    )
     def test_backend_predict(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend should produce valid predictions."""
         from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
@@ -141,7 +144,10 @@ class TestOnnxRuntimeBackend:
             assert isinstance(result, torch.Tensor)
             assert result.shape == (1, 2)
 
-    @pytest.mark.skipif(not _has_ort(), reason="onnxruntime package not installed")
+    @pytest.mark.skipif(
+        not (_has_onnx() and _has_ort()),
+        reason="onnx or onnxruntime package not installed",
+    )
     def test_backend_reset(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend reset should not raise."""
         from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
@@ -159,7 +165,10 @@ class TestOnnxRuntimeBackend:
             backend = OnnxRuntimeBackend(output_path)
             backend.reset()  # Should not raise
 
-    @pytest.mark.skipif(not _has_ort(), reason="onnxruntime package not installed")
+    @pytest.mark.skipif(
+        not (_has_onnx() and _has_ort()),
+        reason="onnx or onnxruntime package not installed",
+    )
     def test_backend_properties(self, simple_policy, onnx_config):
         """OnnxRuntimeBackend should report correct properties."""
         from lerobot_edge.export.onnx import OnnxRuntimeBackend, export_policy_to_onnx
